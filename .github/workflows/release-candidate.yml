@@ -1,0 +1,102 @@
+name: Release candidate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-amd64
+            runner: windows-latest
+            platform: windows
+            arch: amd64
+          - name: darwin-amd64
+            runner: macos-13
+            platform: darwin
+            arch: amd64
+          - name: darwin-arm64
+            runner: macos-14
+            platform: darwin
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 配置 Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: 运行发布前测试
+        run: go test ./...
+      - name: 构建 Windows 资产
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          $env:GOOS = "windows"
+          $env:GOARCH = "amd64"
+          $env:CGO_ENABLED = "0"
+          go build -trimpath -ldflags "-s -w" -o dist/v-local-key-provider-windows-amd64.exe .
+      - name: 构建 macOS 资产
+        if: matrix.platform == 'darwin'
+        shell: bash
+        run: |
+          scripts/build-macos.sh "${{ matrix.arch }}"
+          mkdir -p dist
+          cp "build/darwin-${{ matrix.arch }}/v-local-key-provider" "dist/v-local-key-provider-darwin-${{ matrix.arch }}"
+          cp "build/darwin-${{ matrix.arch }}/v-local-key-provider-helper" "dist/v-local-key-provider-helper-darwin-${{ matrix.arch }}"
+      - name: 保存构建资产
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: provider-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  package:
+    name: Package npm candidate
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: 收集构建资产
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: provider-*
+          merge-multiple: true
+          path: dist
+      - name: 生成统一校验和
+        shell: bash
+        run: |
+          (cd dist && for file in *; do test "$file" = checksums.txt || sha256sum "$file"; done) > dist/checksums.txt
+          cp dist/checksums.txt npm/checksums.txt
+      - name: 运行 npm 测试
+        working-directory: npm
+        run: npm test
+      - name: 打包 npm 安装入口
+        working-directory: npm
+        run: npm pack
+      - name: 保存候选发布件
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: v-local-key-provider-release-candidate
+          path: |
+            dist/*
+            npm/*.tgz
+          if-no-files-found: error
+          retention-days: 14

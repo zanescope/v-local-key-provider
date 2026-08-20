@@ -1,0 +1,19 @@
+{
+  "name": "@zanescope/v-local-key-provider",
+  "version": "0.1.0-dev.0",
+  "description": "可选的本地 Windows/macOS 密钥候选提供器（v-local-key-provider/v2 协议）",
+  "license": "SEE LICENSE IN LICENSE",
+  "bin": {
+    "v-local-key-provider": "scripts/run.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js",
+    "test": "node --test tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=16"
+  },
+  "os": ["win32", "darwin"],
+  "cpu": ["x64", "arm64"],
+  "files": ["scripts/", "checksums.txt", "LICENSE"]
+}

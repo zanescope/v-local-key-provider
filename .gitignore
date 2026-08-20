@@ -1,0 +1,12 @@
+/.codex-temp/
+/build/
+*.exe
+/v-local-key-provider
+/v-local-key-provider-helper
+*.dmg
+*.zip
+*.tar.gz
+npm/bin/
+npm/*.tgz
+checksums.txt
+!/npm/checksums.txt
