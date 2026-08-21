@@ -62,7 +62,7 @@ Provider 会读取**正在运行的微信进程的架构**并自动选择对应�
 npx @zanescope/v-local-key-provider@latest install
 ```
 
-npm 包只负责下载、校验并全局安装对应的 Go 二进制，不包含 Provider 的实现源码。macOS 上会同时把 `v-local-key-provider-helper` 安装到主程序同目录；用户不需要单独运行 helper、传递路径或处理中间候选。当前仓库尚未创建正式 Release，因此包也不会提前发布。
+npm 包只负责下载、校验并全局安装对应的 Go 二进制，不包含 Provider 的实现源码。macOS 上会同时把 `v-local-key-provider-helper` 安装到主程序同目录；用户不需要单独运行 helper、传递路径或处理中间候选。当前仓库尚未创建正式 Release，因此包也不会提前发布。候选件与正式签名发布的操作说明见 [RELEASING.md](RELEASING.md)。
 
 ## macOS 使用前准备
 

@@ -17,7 +17,7 @@ const protocolName = "v-local-key-provider/v1"
 const protocolNameV2 = "v-local-key-provider/v2"
 const maxRequestBytes = 1024 * 1024
 
-var version = "0.1.0-dev"
+var version = "0.1.0-dev.0"
 
 type acquireOptions struct {
 	accountDir   string

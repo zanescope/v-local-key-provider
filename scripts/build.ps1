@@ -74,7 +74,7 @@ if ($Release) {
 
 $Digest = (Get-FileHash -Algorithm SHA256 -LiteralPath $Output).Hash.ToLowerInvariant()
 $Manifest = [ordered]@{
-    protocol = "v-local-key-provider/v1"
+    protocol = "v-local-key-provider/v2"
     platform = "windows"
     arch = "amd64"
     sha256 = $Digest

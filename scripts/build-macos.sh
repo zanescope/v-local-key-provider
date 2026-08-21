@@ -24,8 +24,8 @@ cp "$provider" "$helper"
 chmod 700 "$provider" "$helper"
 
 if [ "$identity" != "-" ]; then
-  codesign --force --options runtime --sign "$identity" "$provider"
-  codesign --force --options runtime --entitlements "$root/scripts/macos-helper.entitlements" --sign "$identity" "$helper"
+  codesign --force --options runtime --timestamp --sign "$identity" "$provider"
+  codesign --force --options runtime --timestamp --entitlements "$root/scripts/macos-helper.entitlements" --sign "$identity" "$helper"
 else
   # ad-hoc builds intentionally omit Hardened Runtime for the local compatibility
   # path; formal Developer ID builds retain it for notarization.

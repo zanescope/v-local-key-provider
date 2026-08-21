@@ -46,6 +46,17 @@ function parseChecksums(text) {
   return result;
 }
 
+function releaseTag(version) {
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version)) {
+    throw new Error(`npm 包版本无法映射到 GitHub Release：${version}`);
+  }
+  return `v${version}`;
+}
+
+function releaseUrl(version, asset) {
+  return `https://github.com/zanescope/v-local-key-provider/releases/download/${releaseTag(version)}/${asset}`;
+}
+
 function verifyHash(file, expected) {
   const actual = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
   if (actual !== expected.toLowerCase()) {
@@ -107,7 +118,6 @@ async function install() {
   }
   const packageInfo = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
   const checksums = parseChecksums(fs.readFileSync(path.join(packageRoot, 'checksums.txt'), 'utf8'));
-  const releaseVersion = packageInfo.version.replace(/-.+$/, '');
   const artifacts = [{asset: selected.asset, binary: selected.binary}];
   if (selected.helperAsset && selected.helperBinary) {
     artifacts.push({asset: selected.helperAsset, binary: selected.helperBinary});
@@ -117,7 +127,7 @@ async function install() {
     if (!expected) throw new Error(`发布包缺少 ${artifact.asset} 的 SHA-256`);
     const artifactDestination = path.join(destinationDir, artifact.binary);
     const temporary = `${artifactDestination}.${process.pid}.tmp`;
-    const url = `https://github.com/zanescope/v-local-key-provider/releases/download/v${releaseVersion}/${artifact.asset}`;
+    const url = releaseUrl(packageInfo.version, artifact.asset);
     try {
       await download(url, temporary);
       verifyHash(temporary, expected);
@@ -137,4 +147,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = {assertDownloadUrl, install, parseChecksums, target, verifyHash};
+module.exports = {assertDownloadUrl, install, parseChecksums, releaseTag, releaseUrl, target, verifyHash};
