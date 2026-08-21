@@ -33,7 +33,7 @@ macOS 的自动路径仍然受微信版本影响。4.1.x 的数据库密钥通�
 动态断点要命中，微信必须重新打开一次数据库。绝大多数动态路径的失败（`hook_trigger_required`、`hook_restart_required`）都按同一套动作处理：
 
 1. 完全退出微信。只关闭窗口或切换聊天不算退出。
-2. 启动调用方的授权命令，例如 `v-local-cli setup --allow-key-access`。
+2. 启动调用方的一次性完整授权命令，例如 `v-local-cli setup --allow-key-access --storage keychain`。
 3. **保持这个终端窗口不动，不要按 `Ctrl-C`。** 命令仍在运行、终端还没有回到提示符，就说明 Provider 正在等待。
 4. 从“应用程序”手动打开微信，完成账号登录或手机端登录确认。只打开登录窗口，或只切换一个已经打开的聊天，都不能代替登录流程。
 
@@ -117,7 +117,7 @@ Provider 由调用方在一次明确授权下启动。调用方应该保持微�
 v-local-cli setup --allow-key-access --storage keychain
 ```
 
-成功之后，由调用方独立验证候选并保存最小化凭据。后续的 `refresh` 不需要再读取微信进程，除非凭据缺失、账号目录改变，或者出现未覆盖的新数据库分片。
+该命令让 Provider 在一次请求中同时申请 `database` 和 `image` 两个 scope；调用方会用本地数据库和真实 DAT 独立验证候选，并在验证成功后把两类密钥一起保存。成功输出应确认 `status=ready`、`media.status=verified`、`database_keys_persisted=true` 和 `image_keys_persisted=true`。只有明确的 database-only 任务才使用 `v-local-cli setup --allow-key-access --storage keychain --database-only`，此时 Provider 只申请 `database` scope。后续媒体刷新使用 `refresh --require-media`，仍不需要再读取微信进程；只有凭据缺失、账号目录改变，或者出现未覆盖的新数据库分片时才需回到 setup。
 
 ## 安全边界
 
@@ -133,6 +133,11 @@ v-local-cli setup --allow-key-access --storage keychain
 - 数据库：只读扫描微信进程中的候选对象，并用本地 SQLCipher 首页筛选。
 - 图片：优先从 `kvcomm` 的 statistic 文件名提取 code，与规范化的 wxid 离线推导 AES/XOR，再用 V2 DAT 头块和 XOR 样本的共识筛选。
 - 只有在 `kvcomm` 路径不可用时，才尝试从进程内存中寻找可由 V2 头块验证的 AES 候选。
+
+macOS 进程发现先使用 `/bin/ps`；当宿主环境拒绝读取进程列表时，回退到
+`launchctl print gui/<uid>`，再查询 `application.com.tencent.xinWeChat...` 应用服务详情。
+诊断中的 `process_discovery_method` 只记录 `ps`、`launchctl` 或 `ps_then_launchctl` 等方法名，
+不会包含进程路径、账号目录或密钥。若两种枚举方式都失败，返回 `process_list_unavailable`，调用方不应显示“微信未运行”。
 
 XOR 多候选只在第一名的证据数至少是第二名四倍时才形成候选；结果接近时按歧义拒绝。所有诊断字段只包含计数和方法名，不包含候选值。
 

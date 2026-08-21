@@ -56,7 +56,9 @@ static kern_return_t z_mach_port_deallocate(mach_port_t port) {
 import "C"
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
@@ -117,12 +119,128 @@ func isDarwinWeChatProcess(name, command string) bool {
 		strings.Contains(lowerCommand, "/contents/macos/微信")
 }
 
-func darwinTargetProcesses() ([]darwinProcess, error) {
-	output, err := exec.Command("/bin/ps", "-axo", "pid=,comm=,args=").Output()
-	if err != nil {
-		return nil, fmt.Errorf("读取微信进程列表失败：%w", err)
+type darwinProcessDiscoveryError struct {
+	PS        error
+	Launchctl error
+}
+
+func (err *darwinProcessDiscoveryError) Error() string {
+	return fmt.Sprintf("读取微信进程列表失败：ps=%v；launchctl=%v", err.PS, err.Launchctl)
+}
+
+func parseLaunchctlProcessList(output string) []darwinProcess {
+	var processes []darwinProcess
+	seen := map[int]bool{}
+	depth := 0
+	bundleID := ""
+	program := ""
+	pid := 0
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if depth == 0 && strings.HasSuffix(trimmed, "= {") {
+			depth = 1
+			bundleID, program, pid = "", "", 0
+			continue
+		}
+		if depth == 0 {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "bundle id = ") {
+			bundleID = strings.TrimSpace(strings.TrimPrefix(trimmed, "bundle id = "))
+		}
+		if strings.HasPrefix(trimmed, "program = ") {
+			program = strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, "program = ")), "\"")
+		}
+		if strings.HasPrefix(trimmed, "pid = ") {
+			pid, _ = strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(trimmed, "pid = ")))
+		}
+		for _, value := range trimmed {
+			switch value {
+			case '{':
+				depth++
+			case '}':
+				depth--
+			}
+		}
+		if depth == 0 && bundleID == "com.tencent.xinWeChat" && pid > 0 && program != "" && !seen[pid] {
+			seen[pid] = true
+			processes = append(processes, darwinProcess{pid: pid, name: filepath.Base(program), command: program})
+		}
 	}
-	return parseDarwinProcessList(string(output)), nil
+	return processes
+}
+
+type launchctlProcessRef struct {
+	label string
+	pid   int
+}
+
+func parseLaunchctlProcessRefs(output string) []launchctlProcessRef {
+	var refs []launchctlProcessRef
+	seen := map[int]bool{}
+	for _, line := range strings.Split(output, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		pid, err := strconv.Atoi(fields[0])
+		if err != nil || pid <= 0 || seen[pid] {
+			continue
+		}
+		label := fields[len(fields)-1]
+		if !strings.HasPrefix(label, "application.com.tencent.xinWeChat.") || strings.Contains(label, "WeChatAppEx") {
+			continue
+		}
+		seen[pid] = true
+		refs = append(refs, launchctlProcessRef{label: label, pid: pid})
+	}
+	return refs
+}
+
+func darwinTargetProcesses() ([]darwinProcess, string, error) {
+	output, err := exec.Command("/bin/ps", "-axo", "pid=,comm=,args=").Output()
+	if err == nil {
+		return parseDarwinProcessList(string(output)), "ps", nil
+	}
+	uid := strconv.Itoa(os.Getuid())
+	launchOutput, launchErr := exec.Command("/bin/launchctl", "print", "gui/"+uid).Output()
+	if launchErr == nil {
+		processes := parseLaunchctlProcessList(string(launchOutput))
+		seen := map[int]bool{}
+		for _, process := range processes {
+			seen[process.pid] = true
+		}
+		refs := parseLaunchctlProcessRefs(string(launchOutput))
+		var detailErr error
+		for _, ref := range refs {
+			if seen[ref.pid] {
+				continue
+			}
+			detail, commandErr := exec.Command("/bin/launchctl", "print", "gui/"+uid+"/"+ref.label).Output()
+			if commandErr != nil {
+				if detailErr == nil {
+					// Keep the first detail error for the partial-discovery diagnostic below.
+					detailErr = commandErr
+				}
+				continue
+			}
+			for _, process := range parseLaunchctlProcessList(string(detail)) {
+				if process.pid != ref.pid || seen[process.pid] {
+					continue
+				}
+				seen[process.pid] = true
+				processes = append(processes, process)
+			}
+		}
+		if len(processes) == 0 && len(refs) > 0 {
+			if detailErr == nil {
+				detailErr = errors.New("微信应用服务详情不可读")
+			}
+			return nil, "launchctl", &darwinProcessDiscoveryError{PS: err, Launchctl: detailErr}
+		}
+		return processes, "launchctl", nil
+	}
+	return nil, "ps_then_launchctl", &darwinProcessDiscoveryError{PS: err, Launchctl: launchErr}
 }
 
 func darwinTaskForPID(pid int) (C.mach_port_t, error) {
@@ -284,10 +402,18 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 		return response{}, diag, nil
 	}
 
-	processes, err := darwinTargetProcesses()
+	processes, discoveryMethod, err := darwinTargetProcesses()
 	if err != nil {
+		var discoveryErr *darwinProcessDiscoveryError
+		if errors.As(err, &discoveryErr) {
+			diag.ProcessAccessStatus = "process_list_unavailable"
+			diag.ProcessAccessError = "process_list_unavailable"
+			diag.ProcessDiscoveryMethod = discoveryMethod
+			return response{}, diag, nil
+		}
 		return response{}, diag, err
 	}
+	diag.ProcessDiscoveryMethod = discoveryMethod
 	diag.ProcessCount = len(processes)
 	if len(processes) > 0 {
 		diag.WeChatVersion = darwinProcessVersion(processes[0])
@@ -355,8 +481,9 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 	if len(processes) == 0 {
 		// wait-for 的目标此刻可能已经起来了。刷新进程列表，以便钩子没抓到时
 		// 常规的静态兜底能检查它。
-		if refreshed, refreshErr := darwinTargetProcesses(); refreshErr == nil {
+		if refreshed, refreshedMethod, refreshErr := darwinTargetProcesses(); refreshErr == nil {
 			processes = refreshed
+			diag.ProcessDiscoveryMethod = refreshedMethod
 			diag.ProcessCount = len(processes)
 			if len(processes) > 0 {
 				diag.WeChatVersion = darwinProcessVersion(processes[0])

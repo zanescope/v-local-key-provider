@@ -87,6 +87,7 @@ type diagnostics struct {
 	KVCommCodeCandidateCount      int    `json:"kvcomm_code_candidate_count"`
 	KVCommVerifiedCandidateCount  int    `json:"kvcomm_verified_candidate_count"`
 	MediaCandidateMethod          string `json:"media_candidate_method,omitempty"`
+	ProcessDiscoveryMethod        string `json:"process_discovery_method,omitempty"`
 	ScannedBytes                  uint64 `json:"scanned_bytes"`
 	ScanLimited                   bool   `json:"scan_limited"`
 	// BudgetExhausted 为真表示时限用尽而提前收工，database_keys 可能不完整。

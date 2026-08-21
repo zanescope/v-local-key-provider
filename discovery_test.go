@@ -103,6 +103,67 @@ func TestKVCommCandidateMustMatchV2AndXOREvidence(t *testing.T) {
 	}
 }
 
+func TestAccountNameCandidatesHandlesWeChatSuffixes(t *testing.T) {
+	got := accountNameCandidates("/Users/example/xwechat_files/dong_zzc_df91")
+	want := []string{"dong_zzc_df91", "dong_zzc"}
+	if len(got) != len(want) {
+		t.Fatalf("unexpected account candidates: %#v", got)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("candidate[%d]=%q, want %q; all=%#v", index, got[index], want[index], got)
+		}
+	}
+}
+
+func TestKVCommCandidateUsesValidatedAccountSuffix(t *testing.T) {
+	appData := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("APPDATA", appData)
+	root := filepath.Join(appData, "Tencent", "xwechat", "net", "kvcomm")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "key_708278060_sample.statistic"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	account := filepath.Join(t.TempDir(), "dong_zzc_df91")
+	want := deriveImageKeysExact(708278060, "dong_zzc")
+	cipher, err := aes.NewCipher([]byte(want.AES))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := [16]byte{0xff, 0xd8, 0xff, 0xe0}
+	var encrypted [16]byte
+	cipher.Encrypt(encrypted[:], plain[:])
+	resolved, candidates, verified := resolveKVCommMedia(account, mediaEvidence{
+		v2Blocks: [][16]byte{encrypted}, xorCandidates: map[byte]int{byte(want.XOR): 9},
+	})
+	if candidates != 1 || verified != 1 || resolved == nil || *resolved != want {
+		t.Fatalf("suffix candidate was not verified: resolved=%v candidates=%d verified=%d", resolved, candidates, verified)
+	}
+}
+
+func TestKVCommCandidateRejectsInsufficientEvidenceForAmbiguousAccountNames(t *testing.T) {
+	appData := t.TempDir()
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("APPDATA", appData)
+	root := filepath.Join(appData, "Tencent", "xwechat", "net", "kvcomm")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "key_245_ambiguous.statistic"), nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	account := filepath.Join(t.TempDir(), "alice_abcd")
+	resolved, candidates, verified := resolveKVCommMedia(account, mediaEvidence{
+		v2Blocks: [][16]byte{{0x89, 'P', 'N', 'G'}}, xorCandidates: map[byte]int{byte(245): 9},
+	})
+	if resolved != nil || candidates != 1 || verified != 0 {
+		t.Fatalf("ambiguous account names without matching AES evidence should be rejected: resolved=%v candidates=%d verified=%d", resolved, candidates, verified)
+	}
+}
+
 func TestDiscoveryStopsWhenBudgetExpired(t *testing.T) {
 	root := t.TempDir()
 	account := filepath.Join(root, "account")
