@@ -1,0 +1,7 @@
+Dual-use functionality disclosure
+
+This package installs v-local-key-provider, a local component that, only after explicit user authorization, inspects the current user's signed-in WeChat process for candidate database and media keys. Candidates are returned over a bounded local stdin/stdout protocol so the calling tool can verify them against the user's own local data.
+
+The intended legitimate use is access, backup, migration, and analysis of data owned by the current user or data the user is explicitly authorized to access. The provider does not upload candidates, persist them to files, establish persistence, provide remote control, or bypass operating-system account permissions.
+
+Users must only process data they own or are explicitly authorized to access and must comply with applicable law and platform terms.

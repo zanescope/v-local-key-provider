@@ -10,6 +10,22 @@ import (
 	"time"
 )
 
+func TestPackageVersionMatchesRuntimeVersion(t *testing.T) {
+	payload, err := os.ReadFile(filepath.Join("npm", "package.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var metadata struct {
+		Version string `json:"version"`
+	}
+	if err := json.Unmarshal(payload, &metadata); err != nil {
+		t.Fatal(err)
+	}
+	if metadata.Version != version {
+		t.Fatalf("npm 版本 %q 与运行时版本 %q 不一致", metadata.Version, version)
+	}
+}
+
 func TestDecodeRequest(t *testing.T) {
 	payload, err := json.Marshal(acquireRequest{
 		Protocol:   protocolName,

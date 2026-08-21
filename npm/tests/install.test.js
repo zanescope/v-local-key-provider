@@ -9,6 +9,13 @@ const test = require('node:test');
 
 const installer = require('../scripts/install.js');
 
+test('npm dual-use 声明随发布包持久存在', () => {
+  const metadata = require('../package.json');
+  assert.strictEqual(metadata.contentPolicy.class, 'dual-use');
+  assert.ok(metadata.files.includes('DISCLOSURE'));
+  assert.match(fs.readFileSync(path.resolve(__dirname, '..', 'DISCLOSURE'), 'utf8'), /explicit user authorization/i);
+});
+
 test('发布目标覆盖 Windows amd64 与 macOS 双架构', () => {
   assert.deepStrictEqual(installer.target('win32', 'x64'), {
     platform: 'windows', arch: 'amd64',
@@ -57,4 +64,13 @@ test('下载地址限制在 GitHub 发布域名', () => {
     'https://github.com/zanescope/v-local-key-provider/releases/download/v1/a',
   ));
   assert.throws(() => installer.assertDownloadUrl('https://example.com/a'));
+});
+
+test('预发布 npm 版本下载同版本 GitHub Release', () => {
+  assert.strictEqual(installer.releaseTag('0.1.0-dev.0'), 'v0.1.0-dev.0');
+  assert.strictEqual(
+    installer.releaseUrl('0.1.0-dev.0', 'provider.exe'),
+    'https://github.com/zanescope/v-local-key-provider/releases/download/v0.1.0-dev.0/provider.exe',
+  );
+  assert.throws(() => installer.releaseTag('latest'));
 });

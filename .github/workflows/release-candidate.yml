@@ -5,6 +5,12 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: release-candidate-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -18,11 +24,11 @@ jobs:
             platform: windows
             arch: amd64
           - name: darwin-amd64
-            runner: macos-13
+            runner: macos-15-intel
             platform: darwin
             arch: amd64
           - name: darwin-arm64
-            runner: macos-14
+            runner: macos-latest
             platform: darwin
             arch: arm64
     runs-on: ${{ matrix.runner }}
@@ -38,16 +44,17 @@ jobs:
           go-version-file: go.mod
           cache: false
       - name: 运行发布前测试
-        run: go test ./...
+        run: |
+          go mod verify
+          go test ./...
+          go vet ./...
       - name: 构建 Windows 资产
         if: matrix.platform == 'windows'
-        shell: powershell
+        shell: pwsh
         run: |
+          ./scripts/build.ps1
           New-Item -ItemType Directory -Force dist | Out-Null
-          $env:GOOS = "windows"
-          $env:GOARCH = "amd64"
-          $env:CGO_ENABLED = "0"
-          go build -trimpath -ldflags "-s -w" -o dist/v-local-key-provider-windows-amd64.exe .
+          Copy-Item build/windows-amd64/v-local-key-provider.exe dist/v-local-key-provider-windows-amd64.exe
       - name: 构建 macOS 资产
         if: matrix.platform == 'darwin'
         shell: bash
@@ -74,6 +81,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+      - name: 配置 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          registry-url: https://registry.npmjs.org
       - name: 收集构建资产
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -87,10 +99,18 @@ jobs:
           cp dist/checksums.txt npm/checksums.txt
       - name: 运行 npm 测试
         working-directory: npm
-        run: npm test
+        run: |
+          npm test
+          npm run verify-release
       - name: 打包 npm 安装入口
         working-directory: npm
         run: npm pack
+      - name: 为候选发布件生成 GitHub 来源证明
+        uses: actions/attest@508db95dd578ae2727ebd6217d5ba78e4fbda05d # v4.2.1
+        with:
+          subject-path: |
+            dist/*
+            npm/*.tgz
       - name: 保存候选发布件
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
