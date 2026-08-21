@@ -19,6 +19,7 @@ var (
 	v1Magic       = []byte{0x07, 0x08, 0x56, 0x31, 0x08, 0x07}
 	v2Magic       = []byte{0x07, 0x08, 0x56, 0x32, 0x08, 0x07}
 	statisticName = regexp.MustCompile(`(?i)^key_(\d{1,10})_.+\.statistic$`)
+	accountSuffix = regexp.MustCompile(`(?i)^(.+)_([0-9a-f]{4,})$`)
 )
 
 type databaseTargets struct {
@@ -38,10 +39,44 @@ func cleanWXID(accountName string) string {
 	return accountName
 }
 
-func deriveImageKeys(code uint32, accountName string) imageKeys {
-	material := strconv.FormatUint(uint64(code), 10) + cleanWXID(accountName)
+// accountNameCandidates returns bounded identity candidates.  Some WeChat
+// layouts append an instance suffix to a normal username (for example
+// "name_ab12"), while wxid directories use a separate historical form.  The
+// candidates are never trusted by themselves: resolveKVCommMedia validates
+// each derived key against every available media sample before accepting one.
+func accountNameCandidates(accountName string) []string {
+	accountName = filepath.Base(filepath.Clean(accountName))
+	if accountName == "." || accountName == string(filepath.Separator) || accountName == "" {
+		return nil
+	}
+	values := []string{accountName}
+	appendUnique := func(value string) {
+		if value == "" {
+			return
+		}
+		for _, existing := range values {
+			if strings.EqualFold(existing, value) {
+				return
+			}
+		}
+		values = append(values, value)
+	}
+	appendUnique(cleanWXID(accountName))
+	if match := accountSuffix.FindStringSubmatch(accountName); len(match) == 3 {
+		appendUnique(match[1])
+		appendUnique(cleanWXID(match[1]))
+	}
+	return values
+}
+
+func deriveImageKeysExact(code uint32, accountName string) imageKeys {
+	material := strconv.FormatUint(uint64(code), 10) + accountName
 	digest := md5.Sum([]byte(material))
 	return imageKeys{AES: hex.EncodeToString(digest[:])[:16], XOR: int(code & 0xff)}
+}
+
+func deriveImageKeys(code uint32, accountName string) imageKeys {
+	return deriveImageKeysExact(code, cleanWXID(accountName))
 }
 
 func appendUniquePath(paths []string, value string) []string {
@@ -135,17 +170,25 @@ func kvcommCodes(accountDir string) []uint32 {
 
 func resolveKVCommMedia(accountDir string, evidence mediaEvidence) (*imageKeys, int, int) {
 	codes := kvcommCodes(accountDir)
-	accountName := filepath.Base(filepath.Clean(accountDir))
-	var matches []imageKeys
+	accountNames := accountNameCandidates(accountDir)
+	matches := make([]imageKeys, 0)
+	seen := map[string]bool{}
 	for _, code := range codes {
-		candidate := deriveImageKeys(code, accountName)
-		if !validateMediaAESBlocks(evidence.v2Blocks, candidate.AES) {
-			continue
+		for _, accountName := range accountNames {
+			candidate := deriveImageKeysExact(code, accountName)
+			if !validateMediaAESBlocks(evidence.v2Blocks, candidate.AES) {
+				continue
+			}
+			if count, found := evidence.xorCandidates[byte(candidate.XOR)]; !found || count == 0 {
+				continue
+			}
+			fingerprint := candidate.AES + ":" + strconv.Itoa(candidate.XOR)
+			if seen[fingerprint] {
+				continue
+			}
+			seen[fingerprint] = true
+			matches = append(matches, candidate)
 		}
-		if count, found := evidence.xorCandidates[byte(candidate.XOR)]; !found || count == 0 {
-			continue
-		}
-		matches = append(matches, candidate)
 	}
 	if len(matches) != 1 {
 		return nil, len(codes), len(matches)
