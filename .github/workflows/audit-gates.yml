@@ -54,13 +54,15 @@ jobs:
         run: go test -race ./...
       - name: 运行解析器模糊烟测
         run: |
-          go test -run=^$ -fuzz=FuzzV4DatabaseKeyObjects -fuzztime=15s .
-          go test -run=^$ -fuzz=FuzzV4InternalXORKeys -fuzztime=15s .
-          go test -run=^$ -fuzz=FuzzScanDatabasePatterns -fuzztime=15s .
-          go test -run=^$ -fuzz=FuzzScanMediaPatterns -fuzztime=15s .
-          go test -run=^$ -fuzz=FuzzValidateRawDatabaseKey -fuzztime=15s .
-          go test -run=^$ -fuzz=FuzzValidateV4DatabasePassphrase -fuzztime=15s .
-          go test -run=^$ -fuzz=FuzzInferPrefixXOR -fuzztime=15s .
+          # 固定迭代量避免计时结束时取消仍在处理大输入的 worker，进而偶发
+          # "context deadline exceeded"；真正的卡死仍由 job 超时负责拦截。
+          go test -run=^$ -fuzz=FuzzV4DatabaseKeyObjects -fuzztime=750000x -parallel=4 .
+          go test -run=^$ -fuzz=FuzzV4InternalXORKeys -fuzztime=750000x -parallel=4 .
+          go test -run=^$ -fuzz=FuzzScanDatabasePatterns -fuzztime=750000x -parallel=4 .
+          go test -run=^$ -fuzz=FuzzScanMediaPatterns -fuzztime=750000x -parallel=4 .
+          go test -run=^$ -fuzz=FuzzValidateRawDatabaseKey -fuzztime=50000x -parallel=4 .
+          go test -run=^$ -fuzz=FuzzValidateV4DatabasePassphrase -fuzztime=1000x -parallel=4 .
+          go test -run=^$ -fuzz=FuzzInferPrefixXOR -fuzztime=750000x -parallel=4 .
 
   vulnerability-scan:
     name: 依赖漏洞扫描
