@@ -134,10 +134,11 @@ func TestWindowsAcquisitionImplementationStaysBehindInternalBoundary(t *testing.
 	}
 }
 
-func TestDarwinMachAcquisitionImplementationStaysBehindInternalBoundary(t *testing.T) {
+func TestDarwinAcquisitionAndHookImplementationStayBehindInternalBoundary(t *testing.T) {
 	requiredInternal := []string{
 		"driver.go", "process.go", "process_discovery.go", "native_driver_darwin.go",
-		"native_process_darwin.go", "native_memory_darwin.go",
+		"native_process_darwin.go", "native_memory_darwin.go", "evidence.go", "hook.go",
+		"hook_driver.go", "hook_protocol.go", "hook_process_darwin.go",
 	}
 	for _, name := range requiredInternal {
 		if _, err := os.Stat(filepath.Join("internal", "platform", "darwin", name)); err != nil {
@@ -151,10 +152,19 @@ func TestDarwinMachAcquisitionImplementationStaysBehindInternalBoundary(t *testi
 	}
 	for _, forbidden := range []string{
 		`import "C"`, "task_for_pid", "mach_vm_region", "mach_vm_read_overwrite", "unsafe",
-		"darwinAcquisitionPipeline", "runStaticScanStage", "scanDarwinProcess",
+		"darwinAcquisitionPipeline", "runStaticScanStage", "scanDarwinProcess", "exec.Command",
+		"os.CreateTemp", "VLOCALPBKDF", "HookPythonSource", "ProcessInstanceID(driver",
 	} {
 		if strings.Contains(string(adapter), forbidden) {
 			t.Errorf("Darwin composition adapter contains native implementation primitive %q", forbidden)
+		}
+	}
+	for _, legacyRoot := range []string{
+		"platform_darwin_hook.go", "session_process_darwin.go", "darwin_hook_protocol_adapter.go",
+		"darwin_process_policy_adapter.go",
+	} {
+		if _, err := os.Stat(legacyRoot); !os.IsNotExist(err) {
+			t.Errorf("legacy root Darwin implementation remains at %s", legacyRoot)
 		}
 	}
 	nativeMemory, err := os.ReadFile(filepath.Join("internal", "platform", "darwin", "native_memory_darwin.go"))

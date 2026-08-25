@@ -261,7 +261,7 @@ go vet ./...
 go build -trimpath -o build/v-local-key-provider.exe ./cmd/v-local-key-provider
 ```
 
-目录边界为：`cmd/v-local-key-provider` 只负责接收 linker 注入的版本/发行标记并启动命令；仓库根目录是可测试的 `provider` 组合与信任策略注入层；协议、catalog、crypto、credential、diagnostics、release evidence、session、acquisition 以及 Windows/Darwin process-memory driver 分别由 `internal/*` 持有。Windows 根适配器只注入可执行文件哈希、Authenticode primary signer、发布 registry 与敏感内存回调；Darwin 根适配器只注入受限命令执行器、代码身份/摘要证据、动态 hook、SIP 状态与敏感内存回调，Mach task-port 生命周期和 acquisition pipeline 均由 `internal/platform/darwin` 持有。
+目录边界为：`cmd/v-local-key-provider` 只负责接收 linker 注入的版本/发行标记并启动命令；仓库根目录是可测试的 `provider` 组合与信任策略注入层；协议、catalog、crypto、credential、diagnostics、release evidence、session、acquisition 以及 Windows/Darwin 平台 driver 分别由 `internal/*` 持有。Windows 根适配器只注入可执行文件哈希、Authenticode primary signer、发布 registry 与敏感内存回调；Darwin 根适配器只注入受限命令执行器、PID-bound executable resolver、路径/摘要信任、发布 registry/policy、SIP 状态与敏感内存回调。Mach task-port、binary evidence、LLDB hook/watchdog、稳定进程实例 ID 和 acquisition pipeline 均由 `internal/platform/darwin` 持有。
 
 macOS 构建应该保持 cgo 开启，并使用与目标机器匹配的架构：
 

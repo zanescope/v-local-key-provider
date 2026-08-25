@@ -16,6 +16,11 @@ func TestHookPythonSourcePinsArchitectureSpecificArguments(t *testing.T) {
 	if !strings.Contains(arm, `_register(frame, "x5")`) || !strings.Contains(arm, `_register(frame, "x6")`) {
 		t.Fatal("arm64 hook source lost CommonCrypto argument mapping")
 	}
+	for _, fragment := range []string{"GetNumResolvedLocations", "GetNumLocations", "_breakpoint_is_resolved", "vlocal-report-hooks"} {
+		if !strings.Contains(arm, fragment) {
+			t.Fatalf("resolved-breakpoint reporting is missing %q", fragment)
+		}
+	}
 }
 
 func TestHookOutputParsersStayStrictAndDeduplicatePIDs(t *testing.T) {
@@ -38,5 +43,13 @@ func TestHookCommandAndBreakpointParsing(t *testing.T) {
 	}
 	if LLDBBreakpointCount("Breakpoint 1: 2 locations.\nBreakpoint 2: no locations (pending).\n") != 1 {
 		t.Fatal("unresolved LLDB breakpoint was counted as installed")
+	}
+}
+
+func TestWaitForCommandSelectsWeixinBundle(t *testing.T) {
+	executable := "/Applications/Weixin.app/Contents/MacOS/Weixin"
+	commands := HookCommandFileWithPython(true, executable, "/tmp/hook.py", WaitForProcessName(executable))
+	if !strings.Contains(commands, "process attach --name Weixin --waitfor") {
+		t.Fatalf("wait-for commands did not select Weixin: %s", commands)
 	}
 }

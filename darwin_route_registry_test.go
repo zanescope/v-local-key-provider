@@ -15,7 +15,11 @@ import (
 
 func TestPhase3DarwinSourceDoesNotInferTargetArchitectureFromProviderBuild(t *testing.T) {
 	var combined strings.Builder
-	for _, path := range []string{"platform_darwin_hook.go", "internal/platform/darwin/hook_protocol.go"} {
+	for _, path := range []string{
+		"internal/platform/darwin/evidence.go",
+		"internal/platform/darwin/hook.go",
+		"internal/platform/darwin/hook_protocol.go",
+	} {
 		payload, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatal(err)
@@ -28,7 +32,7 @@ func TestPhase3DarwinSourceDoesNotInferTargetArchitectureFromProviderBuild(t *te
 			t.Fatalf("Darwin target architecture still uses forbidden inference %q", forbidden)
 		}
 	}
-	for _, required := range []string{`"-o", "arch="`, "GetTarget()", "GetTriple()", `"/usr/bin/codesign"`, "darwinHookCaptureIdentityMatches"} {
+	for _, required := range []string{`"-o", "arch="`, "GetTarget()", "GetTriple()", `"/usr/bin/codesign"`, "captureIdentityMatches"} {
 		if !strings.Contains(source, required) {
 			t.Fatalf("Darwin Phase 3 machine evidence is missing %q", required)
 		}
@@ -37,7 +41,7 @@ func TestPhase3DarwinSourceDoesNotInferTargetArchitectureFromProviderBuild(t *te
 
 func TestPhase5DarwinSubprocessesUseCentralBoundedRunner(t *testing.T) {
 	for _, path := range []string{
-		"platform_darwin.go", "platform_helper_darwin.go", "runtime_trust_darwin.go", "session_process_darwin.go",
+		"platform_darwin.go", "platform_helper_darwin.go", "runtime_trust_darwin.go",
 		"internal/platform/darwin/process_discovery.go", "internal/platform/darwin/native_process_darwin.go",
 	} {
 		payload, err := os.ReadFile(path)
@@ -65,6 +69,18 @@ func TestPhase5DarwinSubprocessesUseCentralBoundedRunner(t *testing.T) {
 	}
 	if strings.Contains(string(launcherSource), "os.Environ()") {
 		t.Fatal("Darwin daemon helper still inherits the caller environment")
+	}
+	hookSource, err := os.ReadFile(filepath.Join("internal", "platform", "darwin", "hook_driver.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{
+		"driver.runtime.RunCommand(ctx, command)", "driver.cleanEnvironment()", "configureProcessGroup(command)",
+		"internal-hook-watchdog", "hookOutputMax", "hookDiagnosticMax",
+	} {
+		if !strings.Contains(string(hookSource), required) {
+			t.Fatalf("specialized LLDB lifecycle is missing %q", required)
+		}
 	}
 }
 

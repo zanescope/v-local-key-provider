@@ -4,6 +4,29 @@
 
 审计条目按时间倒序记录。每条结论只对其标明的代码基线成立；后续复核可以取代旧结论，但不得静默改写历史。
 
+## 2026-08-25 D-1 Darwin hook / evidence 平台垂直切片续作
+
+本轮从 Darwin Mach 切片提交 `4261435` 的干净工作树继续，核对两次中断均未留下半写文件后，迁移剩余 dynamic LLDB hook、目标 binary evidence 与 session process fingerprint；没有改写 Phase 3 能力声明或 Phase 5 发布门禁。
+
+### 实际迁移结果
+
+- `internal/platform/darwin.EvidenceCollector` 现在统一拥有 PID-bound executable 解析、bundle version/build、目标实际架构与 Rosetta 状态、macOS 版本、codesign Team ID/designated requirement、可执行文件 fingerprint、prelaunch target 选择及稳定 process instance ID。Provider 根只注入 daemon 的 PID image resolver、有界命令、路径安全/canonical policy、可执行文件摘要和敏感缓冲清理。
+- `internal/platform/darwin.HookDriver` 现在拥有 direct/wait-for LLDB capture、临时脚本权限与清理、同版本 watchdog/liveness FD、进程组有界终止、断点 readiness、捕获 PID 与 binary evidence 重验证、PBKDF/raw-key 候选消费、persistent session 合并/关闭以及超时后的目标恢复。平台专属 signal/process-group 原语隔离在 `hook_process_darwin.go`；通用生命周期和 owner tests 可在非 macOS runner 编译执行。
+- 原根 `platform_darwin_hook.go`、`session_process_darwin.go`、`darwin_hook_protocol_adapter.go`、`darwin_process_policy_adapter.go` 及重复 owner test 已删除，不保留双实现。`platform_darwin.go` 是 74 行 composition adapter，集中构造 evidence/native/hook runtime 并注入 release registry/policy、SIP 与敏感内存机制。
+- 架构回归会阻止上述旧根文件复活，要求 Mach、evidence、LLDB lifecycle/protocol 均留在 `internal/platform/darwin`，并继续禁止内部包反向 import Provider。root 生产 Go 文件由 60 个降至 56 个，根测试由 24 个降至 23 个；`internal/platform/darwin` 由 8 个生产文件/4 个测试文件增至 13 个生产文件/6 个测试文件。
+- 新 owner tests 覆盖 bundle 空格路径、证据采集策略、resolved breakpoint/Weixin wait-for、capture 必须绑定 PID、rounds=2 XOR-salt raw key、无关 PBKDF 拒绝、输出上限/清零、snapshot 合并与 watchdog 参数 fail-closed。迁移中测试发现并修正了内部敏感输出缓冲 fallback 的长度分配错误；生产注入路径未使用该 fallback，但现在两条路径都受回归约束。
+
+### 本轮验证
+
+| 检查 | 结果 |
+| --- | --- |
+| Windows 原生 | 固定工作区 Go cache/temp 下 `go test ./... -count=1` 全包通过；`go vet ./...` 通过；root 与内部 Darwin 测试二进制编译检查通过。 |
+| WSL Go | 原生私有 `/tmp` 下 `go test ./... -count=1`、`go vet ./...`、`go test -race ./... -count=1` 全包通过。首次误把 `TMPDIR` 放到 `/mnt/d` 时 daemon 私有目录测试按设计拒绝 NTFS 权限语义，改用原生 `/tmp` 后全绿，不把环境失败计为通过。 |
+| build tags / 静态 CGO | Darwin amd64/arm64（`CGO_ENABLED=0`）与 Windows/ARM64 全包构建通过；Darwin amd64/arm64 `CGO_ENABLED=1 go list` 无 package error，arm64 清单确认 `native_memory_darwin.go` 是唯一 CGO 文件，其余 evidence/hook/Mach orchestration 均作为普通 Go 文件归属内部包。该检查不是 macOS CGO 编译或 LLDB/Mach 真机执行。 |
+| npm / 静态 | Provider npm 13/13 通过；`git diff --check`、格式、旧根实现/原生 primitive、内部反向依赖与固定 subprocess policy 回归通过。 |
+
+这次切片完成了当前已知的 Darwin acquisition/hook 平台实现下沉，但不解除空生产 registry、Intel/Apple Silicon CGO runner、Mach/LLDB 授权真机 acquisition、最终签名件、notarization 或 Trusted Publishing 门禁。目录所有权与 mock/race 结果不得冒充 macOS 真机能力证据。
+
 ## 2026-08-25 D-1 Darwin Mach 平台垂直切片续作
 
 本轮以 Windows 平台切片提交 `6b9a5b7` 为起点，迁移 Darwin acquisition pipeline、进程发现与 Mach 只读内存实现；没有改写 Phase 3 能力声明或 Phase 5 发布门禁。

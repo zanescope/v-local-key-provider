@@ -3,56 +3,72 @@
 package provider
 
 import (
-	"path/filepath"
-
+	daemonmodel "github.com/zanescope/v-local-key-provider/internal/daemon"
 	darwinmodel "github.com/zanescope/v-local-key-provider/internal/platform/darwin"
-	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
-func darwinNativeDriver() darwinmodel.NativeDriver {
-	return darwinmodel.NewNativeDriver(darwinmodel.NativeRuntime{
-		RunOutput:      runBoundedDarwinOutput,
-		MarkSensitive:  markSensitiveBytes,
-		ClearSensitive: zeroBytes,
-		CollectEvidence: func(process darwinmodel.Process) darwinmodel.BinaryEvidence {
-			return darwinCollectBinaryEvidence(darwinProcessFromModel(process))
-		},
-		PrelaunchProcess: func() darwinmodel.Process {
-			process := darwinProcess{}
-			process.command = darwinWeChatExecutable(process)
-			process.name = filepath.Base(process.command)
-			return darwinProcessToModel(process)
-		},
-	})
+type darwinPlatformRuntime struct {
+	native darwinmodel.NativeDriver
+	hook   *darwinmodel.HookDriver
 }
 
-func darwinTargetProcesses() ([]darwinProcess, string, error) {
-	processes, method, err := darwinNativeDriver().ListProcesses()
-	result := make([]darwinProcess, 0, len(processes))
-	for _, process := range processes {
-		result = append(result, darwinProcessFromModel(process))
-	}
-	return result, method, err
+func newDarwinPlatformRuntime() darwinPlatformRuntime {
+	evidence := darwinmodel.NewEvidenceCollector(darwinmodel.EvidenceRuntime{
+		RunOutput:             runBoundedDarwinOutput,
+		RunCombinedOutput:     runBoundedDarwinCombinedOutput,
+		ProcessExecutablePath: daemonmodel.ProcessExecutablePath,
+		ExecutableSHA256:      executableSHA256,
+		PathIsLinkOrReparse:   pathIsLinkOrReparse,
+		SameCanonicalPath:     sameCanonicalPath,
+		ClearSensitive:        zeroBytes,
+	})
+	native := darwinmodel.NewNativeDriver(darwinmodel.NativeRuntime{
+		RunOutput:        runBoundedDarwinOutput,
+		MarkSensitive:    markSensitiveBytes,
+		ClearSensitive:   zeroBytes,
+		CollectEvidence:  evidence.CollectEvidence,
+		PrelaunchProcess: evidence.PrelaunchProcess,
+	})
+	hook := darwinmodel.NewHookDriver(darwinmodel.HookRuntime{
+		Native:           native,
+		Evidence:         evidence,
+		Registry:         darwinCompatibilityRegistry,
+		Policy:           darwinRoutePolicy(),
+		SecurityPosture:  defaultSecurityPostureStatus,
+		CleanEnvironment: darwinCleanEnvironment,
+		RunCommand:       runDarwinCommand,
+		MarkSensitive:    markSensitiveBytes,
+		ClearSensitive:   zeroBytes,
+		CloneSensitive:   cloneSensitiveBytes,
+		AppendSensitive:  appendSensitiveBytesLimited,
+	})
+	return darwinPlatformRuntime{native: native, hook: hook}
 }
 
 func platformAcquire(targets databaseTargets, media mediaEvidence, options acquireOptions) (response, diagnostics, error) {
+	runtime := newDarwinPlatformRuntime()
 	driver := darwinmodel.NewDriver(darwinmodel.DriverRuntime{
-		Acquisition: candidateRuntime(),
-		Registry:    darwinCompatibilityRegistry,
-		Policy:      darwinRoutePolicy(),
-		Native:      darwinNativeDriver(),
-		CaptureHook: func(
-			process darwinmodel.Process,
-			collector *candidateCollector,
-			remaining workbudget.Budget,
-			waitFor bool,
-			securityPosture string,
-		) platformHookSnapshot {
-			return captureDarwinHookMode(
-				darwinProcessFromModel(process), collector, budget{value: remaining}, waitFor, securityPosture,
-			)
-		},
+		Acquisition:     candidateRuntime(),
+		Registry:        darwinCompatibilityRegistry,
+		Policy:          darwinRoutePolicy(),
+		Native:          runtime.native,
+		CaptureHook:     runtime.hook.Capture,
 		SecurityPosture: defaultSecurityPostureStatus,
 	})
 	return driver.Acquire(targets, media, platformRequestFromOptions(options))
+}
+
+func preparePlatformAcquisitionSession(targets databaseTargets, options acquireOptions) acquisitionPlatformSession {
+	runtime := newDarwinPlatformRuntime()
+	return runtime.hook.PrepareSession(targets, platformRequestFromOptions(options))
+}
+
+func runPlatformHookWatchdog(args []string) error {
+	runtime := newDarwinPlatformRuntime()
+	return runtime.hook.RunWatchdog(args)
+}
+
+func platformProcessInstanceID() string {
+	runtime := newDarwinPlatformRuntime()
+	return runtime.hook.ProcessInstanceID()
 }
