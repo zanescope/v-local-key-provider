@@ -371,3 +371,68 @@ func TestAcquisitionWorkflowImplementationStaysBehindInternalBoundary(t *testing
 		}
 	}
 }
+
+func TestGenericCommandAndSecretPublicationStayBehindInternalBoundaries(t *testing.T) {
+	for _, path := range []string{
+		filepath.Join("internal", "command", "workflow.go"),
+		filepath.Join("internal", "protocol", "secret_policy.go"),
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Errorf("internal command/publication implementation is missing %s: %v", path, err)
+		}
+	}
+
+	rootCommand, err := os.ReadFile("command.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{
+		"acquisitionmodel.ParseOptions", "diagnosticmodel.ApplyOutcome", "DiagnosticsPermitSecrets(",
+		"DatabaseCredential = nil", "ImageKeys = nil",
+	} {
+		if strings.Contains(string(rootCommand), forbidden) {
+			t.Errorf("root command contains generic workflow/publication implementation %q", forbidden)
+		}
+	}
+
+	sessionPolicy, err := os.ReadFile(filepath.Join("internal", "session", "policy.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"func EnforceSecretPolicy", "func DiagnosticsPermitSecrets", "func WithoutSecrets"} {
+		if strings.Contains(string(sessionPolicy), forbidden) {
+			t.Errorf("session package redefined protocol publication policy %q", forbidden)
+		}
+	}
+
+	entries, err := os.ReadDir(filepath.Join("internal", "command"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := token.NewFileSet()
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join("internal", "command", name)
+		parsed, err := parser.ParseFile(files, path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Errorf("cannot parse %s: %v", path, err)
+			continue
+		}
+		for _, imported := range parsed.Imports {
+			value, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				t.Errorf("cannot decode import in %s: %v", path, err)
+				continue
+			}
+			switch value {
+			case "github.com/zanescope/v-local-key-provider",
+				"github.com/zanescope/v-local-key-provider/internal/daemon",
+				"github.com/zanescope/v-local-key-provider/internal/session":
+				t.Errorf("%s imports composition/session layer %q", path, value)
+			}
+		}
+	}
+}

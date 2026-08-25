@@ -143,19 +143,19 @@ func (coordinator *Coordinator) sessionRequest(ctx context.Context, request prot
 	defer coordinator.store.ReleaseSnapshot(record)
 	switch begin.Status {
 	case BeginCancelled:
-		return EnforceSecretPolicy(coordinator.cancelledResponse(request, record, processInstanceID)), nil
+		return protocolmodel.EnforceSecretPolicy(coordinator.cancelledResponse(request, record, processInstanceID)), nil
 	case BeginCatalogDrift:
-		return EnforceSecretPolicy(coordinator.blockedResponse(request, record, "catalog_drift")), nil
+		return protocolmodel.EnforceSecretPolicy(coordinator.blockedResponse(request, record, "catalog_drift")), nil
 	case BeginInFlight:
-		return EnforceSecretPolicy(coordinator.blockedResponse(request, record, "acquisition_request_in_progress")), nil
+		return protocolmodel.EnforceSecretPolicy(coordinator.blockedResponse(request, record, "acquisition_request_in_progress")), nil
 	case BeginWaitingReceipt:
-		return EnforceSecretPolicy(coordinator.waitingResponse(request, record)), nil
+		return protocolmodel.EnforceSecretPolicy(coordinator.waitingResponse(request, record)), nil
 	case BeginReceiptRejected:
-		return EnforceSecretPolicy(coordinator.blockedResponse(request, record, "action_receipt_rejected")), nil
+		return protocolmodel.EnforceSecretPolicy(coordinator.blockedResponse(request, record, "action_receipt_rejected")), nil
 	case BeginDuplicate:
-		return EnforceSecretPolicy(coordinator.blockedResponse(request, record, "duplicate_action_without_state_change")), nil
+		return protocolmodel.EnforceSecretPolicy(coordinator.blockedResponse(request, record, "duplicate_action_without_state_change")), nil
 	case BeginRetryExhausted:
-		return EnforceSecretPolicy(coordinator.blockedResponse(request, record, "action_retry_budget_exhausted")), nil
+		return protocolmodel.EnforceSecretPolicy(coordinator.blockedResponse(request, record, "action_retry_budget_exhausted")), nil
 	case BeginReady:
 		// Continue with the detached, deep-cloned state snapshot.
 	default:
@@ -230,7 +230,7 @@ func (coordinator *Coordinator) sessionRequest(ctx context.Context, request prot
 		if !coordinator.store.Delete(record.ID) {
 			return coordinator.cancelledResponse(request, record, processInstanceID), nil
 		}
-		return EnforceSecretPolicy(result), nil
+		return protocolmodel.EnforceSecretPolicy(result), nil
 	}
 
 	var media acquisitionmodel.MediaEvidence
@@ -263,9 +263,9 @@ func (coordinator *Coordinator) sessionRequest(ctx context.Context, request prot
 		return coordinator.cancelledResponse(request, record, processInstanceID), nil
 	}
 	if request.Workflow.Operation == "observe" {
-		return WithoutSecrets(result), nil
+		return protocolmodel.WithoutSecrets(result), nil
 	}
-	return EnforceSecretPolicy(result), nil
+	return protocolmodel.EnforceSecretPolicy(result), nil
 }
 
 // Handle executes one workflow transition. Callers must decode and validate

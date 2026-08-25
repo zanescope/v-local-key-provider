@@ -49,7 +49,3 @@ func acquisitionSessionRuntime() sessionmodel.Runtime {
 		ConfigStatusRank:        windowsConfigStatusRank,
 	}
 }
-
-func enforceResponseSecretPolicy(value response) response {
-	return sessionmodel.EnforceSecretPolicy(value)
-}

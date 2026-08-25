@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	commandmodel "github.com/zanescope/v-local-key-provider/internal/command"
 )
 
 var version = "0.1.0-dev.0"
@@ -53,51 +55,28 @@ func writeProtocolResponse(result response) error {
 }
 
 func executeOneShotAcquire(request acquireRequest, helperMode bool, helperStatus string) (response, error) {
-	if request.Workflow.Operation != "finalize" || request.Workflow.SessionID != "" {
-		return response{}, errors.New("prepare/observe/cancel 或已有 session 的 finalize 必须通过 daemon 入口")
+	return commandmodel.ExecuteOneShot(request, helperMode, helperStatus, commandWorkflowRuntime())
+}
+
+func commandWorkflowRuntime() commandmodel.Runtime {
+	return commandmodel.Runtime{
+		OptionPolicy:       acquisitionOptionPolicy(),
+		Acquisition:        acquisitionWorkflowRuntime(),
+		ClearSensitive:     zeroBytes,
+		PlatformName:       platformNameForDiagnostics,
+		SecurityPosture:    defaultSecurityPostureStatus,
+		DiagnosticDefaults: platformDiagnosticDefaults,
 	}
-	options, err := optionsFromRequest(request)
-	if err != nil {
-		return response{}, err
-	}
-	options.HelperMode = helperMode
-	options.HelperStatus = helperStatus
-	result, err := runAcquire(options)
-	if err != nil {
-		return response{}, err
-	}
-	result.Protocol = request.Protocol
-	result.RequestID = request.RequestID
-	return enforceResponseSecretPolicy(result), nil
 }
 
 func securityPostureRevalidationResponse(request acquireRequest, options acquireOptions, platform, posture string) response {
-	diag := newDiagnostics(platform, requestedScopes(options.Database, options.Media))
-	diag.SecurityPostureStatus = posture
-	diag.ActionStage = "security_posture_revalidation"
-	applyFixedDiagnosticOutcome(&diag, "unsupported", "blocked", "stop_and_report", "security_posture_not_verified")
-	if platform == "darwin" {
-		diag.ShadowRouteStatus = "unavailable_in_build"
-		diag.RoutePriority = []string{"standard", "shadow", "sip_disabled"}
-		switch posture {
-		case "sip_enabled_verified":
-			applyFixedDiagnosticOutcome(&diag, "complete", "terminal", "none")
-		case "sip_disabled_verified":
-			diag.SecurityPostureStatus = "restoration_required"
-			applyFixedDiagnosticOutcome(&diag, "action_required", "waiting_action", "reenable_sip")
-		}
-	}
-	applyPlatformDiagnosticDefaults(&diag)
-	return response{Protocol: request.Protocol, RequestID: request.RequestID, Diagnostics: diag}
+	return commandmodel.SecurityPostureResponse(
+		request, options, platform, posture, platformDiagnosticDefaults(),
+	)
 }
 
 func executeSecurityPostureRevalidation(request acquireRequest) (response, error) {
-	options, err := securityPostureRevalidationOptions(request)
-	if err != nil {
-		return response{}, err
-	}
-	defer zeroBytes(options.CatalogKey)
-	return securityPostureRevalidationResponse(request, options, platformNameForDiagnostics(), defaultSecurityPostureStatus()), nil
+	return commandmodel.ExecuteSecurityPostureRevalidation(request, commandWorkflowRuntime())
 }
 
 func runMain() int {

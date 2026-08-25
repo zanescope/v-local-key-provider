@@ -8,7 +8,7 @@ import (
 
 func (coordinator *Coordinator) waitingResponse(request protocolmodel.AcquireRequest, record *Record) protocolmodel.Response {
 	if record.Latest != nil {
-		result := WithoutSecrets(*record.Latest)
+		result := protocolmodel.WithoutSecrets(*record.Latest)
 		result.RequestID = request.RequestID
 		result.Diagnostics.SessionID = record.ID
 		result.Diagnostics.ProcessInstanceID = record.ProcessInstanceID
@@ -35,7 +35,7 @@ func (coordinator *Coordinator) cancelledResponse(request protocolmodel.AcquireR
 
 func (coordinator *Coordinator) blockedResponse(request protocolmodel.AcquireRequest, record *Record, reason string) protocolmodel.Response {
 	if record.Latest != nil {
-		result := WithoutSecrets(*record.Latest)
+		result := protocolmodel.WithoutSecrets(*record.Latest)
 		result.RequestID = request.RequestID
 		applyFixedOutcome(&result.Diagnostics, "action_required", "blocked", "stop_and_report", reason)
 		result.Diagnostics.SessionID = record.ID

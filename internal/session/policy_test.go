@@ -66,13 +66,13 @@ func TestSecretPolicyFailsClosedAndAllowsCompleteTerminal(t *testing.T) {
 			ResultCode: "action_required", WorkflowStatus: "blocked", BlockingReasons: []string{"catalog_drift"},
 		},
 	}
-	if filtered := EnforceSecretPolicy(value); filtered.DatabaseKeys != nil || filtered.ImageKeys != nil {
+	if filtered := protocolmodel.EnforceSecretPolicy(value); filtered.DatabaseKeys != nil || filtered.ImageKeys != nil {
 		t.Fatalf("blocked response leaked secrets: %+v", filtered)
 	}
 	value.Diagnostics.ResultCode = "complete"
 	value.Diagnostics.WorkflowStatus = "terminal"
 	value.Diagnostics.BlockingReasons = nil
-	if filtered := EnforceSecretPolicy(value); filtered.DatabaseKeys == nil || filtered.ImageKeys == nil {
+	if filtered := protocolmodel.EnforceSecretPolicy(value); filtered.DatabaseKeys == nil || filtered.ImageKeys == nil {
 		t.Fatalf("complete terminal response lost secrets: %+v", filtered)
 	}
 }
@@ -99,7 +99,7 @@ func TestSecretPolicyCoversBlockedMismatchDeadlineAndRestorationOutcomes(t *test
 		t.Run(test.name, func(t *testing.T) {
 			value := secretResponse
 			value.Diagnostics = test.diag
-			value = EnforceSecretPolicy(value)
+			value = protocolmodel.EnforceSecretPolicy(value)
 			if value.DatabaseKeys != nil || value.DatabaseProfiles != nil || value.DatabaseCredential != nil || value.ImageKeys != nil {
 				t.Fatalf("unsafe outcome retained secrets: %+v", value)
 			}
@@ -110,14 +110,14 @@ func TestSecretPolicyCoversBlockedMismatchDeadlineAndRestorationOutcomes(t *test
 	allowed.Diagnostics = diagnosticmodel.Diagnostics{
 		ResultCode: "partial", WorkflowStatus: "terminal", TargetBindingStatus: "hmac_verified",
 	}
-	if value := EnforceSecretPolicy(allowed); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
+	if value := protocolmodel.EnforceSecretPolicy(allowed); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
 		t.Fatalf("verified terminal partial lost secrets: %+v", value)
 	}
 	deadline := secretResponse
 	deadline.Diagnostics = diagnosticmodel.Diagnostics{
 		ResultCode: "deadline_exhausted", WorkflowStatus: "terminal", TargetBindingStatus: "hmac_verified",
 	}
-	if value := EnforceSecretPolicy(deadline); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
+	if value := protocolmodel.EnforceSecretPolicy(deadline); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
 		t.Fatalf("verified deadline partial lost secrets: %+v", value)
 	}
 	restoration := secretResponse
@@ -126,11 +126,11 @@ func TestSecretPolicyCoversBlockedMismatchDeadlineAndRestorationOutcomes(t *test
 		SecurityPostureStatus: "restoration_required", RequestedScopes: []string{"database"},
 		DatabaseCoverageStatus: "complete", TargetBindingStatus: "hmac_verified",
 	}
-	if value := EnforceSecretPolicy(restoration); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
+	if value := protocolmodel.EnforceSecretPolicy(restoration); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
 		t.Fatalf("complete SIP-restoration outcome lost verified secrets: %+v", value)
 	}
 	restoration.Diagnostics.DatabaseCoverageStatus = "partial"
-	if value := EnforceSecretPolicy(restoration); value.DatabaseKeys != nil || value.DatabaseCredential != nil || value.ImageKeys != nil {
+	if value := protocolmodel.EnforceSecretPolicy(restoration); value.DatabaseKeys != nil || value.DatabaseCredential != nil || value.ImageKeys != nil {
 		t.Fatalf("incomplete SIP-restoration outcome retained secrets: %+v", value)
 	}
 }
