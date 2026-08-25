@@ -459,7 +459,7 @@ func TestFinalizeDiagnosticsRequiresSIPRestorationAfterVerifiedAcquisition(t *te
 	}}}, Count: 1}
 	result := response{DatabaseKeys: map[string]string{"message.db": strings.Repeat("a", 64)}}
 	diag := diagnostics{Platform: "darwin", SecurityPostureStatus: "sip_disabled_verified", SessionAccountStatus: "known_target"}
-	finalizeDiagnostics(&diag, targets, result, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, result, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "action_required" || diag.WorkflowStatus != "waiting_action" || diag.NextAction != "reenable_sip" ||
 		diag.DatabaseCoverageStatus != "complete" || diag.TargetBindingStatus != "hmac_verified" ||
 		diag.SessionAccountStatus != "known_target" || diag.SecurityPostureStatus != "restoration_required" {
@@ -475,7 +475,7 @@ func TestFinalizeDiagnosticsRequiresSIPRestorationAfterFailedSIPRoute(t *testing
 		Platform: "darwin", SecurityPostureStatus: "sip_disabled_verified",
 		RoutesAttempted: []string{"darwin_arm64_sip_disabled"},
 	}
-	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "action_required" || diag.WorkflowStatus != "waiting_action" || diag.NextAction != "reenable_sip" ||
 		diag.SecurityPostureStatus != "restoration_required" || len(diag.BlockingReasons) != 1 ||
 		diag.BlockingReasons[0] != "sip_route_failed" {
@@ -486,7 +486,7 @@ func TestFinalizeDiagnosticsRequiresSIPRestorationAfterFailedSIPRoute(t *testing
 func TestFinalizeDiagnosticsRequiresSIPRestorationBeforeSIPRouteStarts(t *testing.T) {
 	targets := databaseTargets{Catalog: databaseCatalog{}, Count: 0}
 	diag := diagnostics{Platform: "darwin", SecurityPostureStatus: "sip_disabled_verified"}
-	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "action_required" || diag.WorkflowStatus != "waiting_action" || diag.NextAction != "reenable_sip" ||
 		diag.SecurityPostureStatus != "restoration_required" || len(diag.BlockingReasons) != 1 ||
 		diag.BlockingReasons[0] != "sip_disabled_route_not_attempted" || len(diag.RoutesAttempted) != 0 {
@@ -500,7 +500,7 @@ func TestFinalizeDiagnosticsCompletesWithVerifiedSIPEnabledPosture(t *testing.T)
 	}}}, Count: 1}
 	result := response{DatabaseKeys: map[string]string{"message.db": strings.Repeat("a", 64)}}
 	diag := diagnostics{SecurityPostureStatus: "sip_enabled_verified"}
-	finalizeDiagnostics(&diag, targets, result, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, result, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "complete" || diag.WorkflowStatus != "terminal" || diag.NextAction != "none" {
 		t.Fatalf("verified SIP-enabled posture did not complete: %+v", diag)
 	}
@@ -515,7 +515,7 @@ func TestUnavailableShadowRouteFallsThroughToSIPWithExplicitEvidence(t *testing.
 		ProcessAccessStatus: "denied", ProcessAccessError: "sip_enabled",
 		RoutesAttempted: []string{"darwin_static_fallback"},
 	}
-	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "action_required" || diag.WorkflowStatus != "waiting_action" || diag.NextAction != "disable_sip" ||
 		diag.ShadowRouteStatus != "unavailable_in_build" ||
 		len(diag.RoutePriority) != 3 || diag.RoutePriority[0] != "standard" || diag.RoutePriority[1] != "shadow" || diag.RoutePriority[2] != "sip_disabled" ||
@@ -542,7 +542,7 @@ func TestOtherTerminalShadowOutcomesAlsoFallThroughWithoutChangingTheirMeaning(t
 				Platform: "darwin", SecurityPostureStatus: "sip_enabled_verified", ShadowRouteStatus: test.status,
 				ProcessAccessStatus: "denied", ProcessAccessError: "sip_enabled", RoutesAttempted: test.routesAttempted,
 			}
-			finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+			finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 			if diag.ResultCode != "action_required" || diag.NextAction != "disable_sip" ||
 				len(diag.BlockingReasons) != 2 || diag.BlockingReasons[1] != test.reason || diag.ShadowRouteStatus != test.status {
 				t.Fatalf("terminal Shadow outcome changed meaning or blocked fallback: %+v", diag)
@@ -559,7 +559,7 @@ func TestAvailableShadowRouteRetainsPriorityOverSIP(t *testing.T) {
 		Platform: "darwin", SecurityPostureStatus: "sip_enabled_verified", ShadowRouteStatus: "available",
 		ProcessAccessStatus: "denied", ProcessAccessError: "sip_enabled",
 	}
-	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "action_required" || diag.NextAction != "approve_shadow_mode" ||
 		diag.ShadowRouteStatus != "awaiting_approval" || len(diag.BlockingReasons) != 1 ||
 		diag.BlockingReasons[0] != "standard_route_unavailable" {
@@ -575,7 +575,7 @@ func TestUnevaluatedShadowRouteCannotBeSkipped(t *testing.T) {
 		Platform: "darwin", SecurityPostureStatus: "sip_enabled_verified", ShadowRouteStatus: "not_evaluated",
 		ProcessAccessStatus: "denied", ProcessAccessError: "sip_enabled",
 	}
-	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "unsupported" || diag.NextAction != "stop_and_report" ||
 		len(diag.BlockingReasons) != 2 || diag.BlockingReasons[1] != "shadow_route_not_evaluated" {
 		t.Fatalf("unevaluated Shadow route was silently skipped: %+v", diag)
@@ -591,7 +591,7 @@ func TestSIPFallbackRequiresVerifiedSecurityPosture(t *testing.T) {
 		ProcessAccessStatus: "denied", ProcessAccessError: "sip_enabled",
 		ShadowRouteStatus: "unavailable_in_build",
 	}
-	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "unsupported" || diag.WorkflowStatus != "blocked" || diag.NextAction != "stop_and_report" ||
 		len(diag.BlockingReasons) != 2 || diag.BlockingReasons[1] != "security_posture_not_verified" {
 		t.Fatalf("unverified SIP observation was promoted into a security change: %+v", diag)
@@ -604,7 +604,7 @@ func TestMediaFailureDoesNotDowngradeDatabaseCoverage(t *testing.T) {
 	}}}, Count: 1}
 	result := response{DatabaseKeys: map[string]string{"message.db": strings.Repeat("a", 64)}}
 	diag := diagnostics{}
-	finalizeDiagnostics(&diag, targets, result, acquireOptions{database: true, media: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, result, acquireOptions{Database: true, Media: true, Budget: unlimitedBudget().value})
 	if diag.DatabaseCoverageStatus != "complete" || diag.MediaCoverageStatus != "none" || diag.ResultCode != "partial" {
 		t.Fatalf("media result corrupted orthogonal database coverage: %+v", diag)
 	}
@@ -613,7 +613,7 @@ func TestMediaFailureDoesNotDowngradeDatabaseCoverage(t *testing.T) {
 func TestEmptyDatabaseCatalogIsNotComplete(t *testing.T) {
 	targets := databaseTargets{Catalog: databaseCatalog{}, Count: 0}
 	diag := diagnostics{}
-	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.DatabaseTargetStatus != "none" || diag.DatabaseCoverageStatus != "none" || diag.ResultCode == "complete" ||
 		diag.NextAction != "stop_and_report" || len(diag.BlockingReasons) != 1 || diag.BlockingReasons[0] != "database_targets_not_found" {
 		t.Fatalf("empty catalog was confused with complete plaintext coverage: %+v", diag)
@@ -626,7 +626,7 @@ func TestPlaintextCatalogCompletesWithoutDatabaseKey(t *testing.T) {
 		RequiredForKeyCoverage: false,
 	}}}, Count: 0}
 	diag := diagnostics{SecurityPostureStatus: "not_applicable"}
-	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.DatabaseTargetStatus != "present" || diag.DatabaseCoverageStatus != "complete" || diag.ResultCode != "complete" ||
 		diag.RequiredDatabaseCount != 0 || diag.PlaintextDatabaseCount != 1 || diag.ShadowRouteStatus != "not_applicable" || len(diag.RoutePriority) != 0 {
 		t.Fatalf("proven plaintext catalog did not complete without a secret: %+v", diag)
@@ -636,7 +636,7 @@ func TestPlaintextCatalogCompletesWithoutDatabaseKey(t *testing.T) {
 func TestMediaOnlyCoverageDoesNotClaimDatabaseCompletion(t *testing.T) {
 	result := response{ImageKeys: &imageKeys{AES: "1234567890abcdef", XOR: 7}}
 	diag := diagnostics{}
-	finalizeDiagnostics(&diag, databaseTargets{}, result, acquireOptions{media: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, databaseTargets{}, result, acquireOptions{Media: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "complete" || diag.DatabaseCoverageStatus != "not_requested" ||
 		diag.MediaCoverageStatus != "complete" || len(diag.RequestedScopes) != 1 || diag.RequestedScopes[0] != "media" {
 		t.Fatalf("media-only coverage was not scope explicit: %+v", diag)
@@ -652,7 +652,7 @@ func TestAllRequestedScopesCompleteProduceOverallComplete(t *testing.T) {
 		ImageKeys:    &imageKeys{AES: "1234567890abcdef", XOR: 7},
 	}
 	diag := diagnostics{}
-	finalizeDiagnostics(&diag, targets, result, acquireOptions{database: true, media: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, result, acquireOptions{Database: true, Media: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "complete" || diag.DatabaseCoverageStatus != "complete" || diag.MediaCoverageStatus != "complete" ||
 		len(diag.RequestedScopes) != 2 || diag.RequestedScopes[0] != "database" || diag.RequestedScopes[1] != "media" {
 		t.Fatalf("complete multi-scope result violated aggregate coverage invariants: %+v", diag)
@@ -683,7 +683,7 @@ func TestFinalizeDiagnosticsPrioritizesAccountMismatchOverCompleteCoverage(t *te
 	}}}, Count: 1}
 	result := response{DatabaseKeys: map[string]string{"message.db": strings.Repeat("a", 64)}}
 	diag := diagnostics{TargetBindingStatus: "mismatch", SessionAccountStatus: "known_other"}
-	finalizeDiagnostics(&diag, targets, result, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, result, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "action_required" || diag.NextAction != "switch_to_target_account" || diag.WorkflowStatus != "waiting_action" {
 		t.Fatalf("account mismatch was hidden by complete coverage: %+v", diag)
 	}
@@ -708,7 +708,7 @@ func TestBudgetExhaustionCannotOverwriteHigherPriorityTerminalOutcome(t *testing
 		t.Run(test.name, func(t *testing.T) {
 			diag := test.diag
 			diag.BudgetExhausted = true
-			finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+			finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 			if diag.ResultCode != test.expectedResult || diag.ProcessAccessStatus != test.expectedProcess || diag.NextAction != test.expectedNextAction {
 				t.Fatalf("budget overwrote a higher-priority outcome: %+v", diag)
 			}
@@ -721,7 +721,7 @@ func TestBudgetExhaustionIsAuthoritativeWhenNoHigherPriorityOutcomeExists(t *tes
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
 	}}}, Count: 1}
 	diag := diagnostics{BudgetExhausted: true, ProcessAccessStatus: "opened"}
-	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
+	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{Database: true, Budget: unlimitedBudget().value})
 	if diag.ResultCode != "deadline_exhausted" || diag.WorkflowStatus != "terminal" || diag.NextAction != "stop_and_report" ||
 		diag.ProcessAccessStatus != "opened" {
 		t.Fatalf("budget outcome was not resolved deterministically: %+v", diag)

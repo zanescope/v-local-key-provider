@@ -133,11 +133,11 @@ func TestOptionsCarryV1Budget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if v1.budget.isUnlimited() {
+	if v1.Budget.IsUnlimited() {
 		t.Fatal("v1 请求的时限不应是无限")
 	}
 	time.Sleep(80 * time.Millisecond)
-	if !v1.budget.expired() {
+	if !v1.Budget.Expired() {
 		t.Fatal("50 毫秒时限在 80 毫秒后仍未过期")
 	}
 }

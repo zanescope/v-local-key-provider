@@ -1,13 +1,17 @@
 package provider
 
 import (
+	"time"
+
 	acquisitionmodel "github.com/zanescope/v-local-key-provider/internal/acquisition"
 	catalogmodel "github.com/zanescope/v-local-key-provider/internal/catalog"
 	credentialmodel "github.com/zanescope/v-local-key-provider/internal/credential"
 	diagnosticmodel "github.com/zanescope/v-local-key-provider/internal/diagnostics"
 	protocolmodel "github.com/zanescope/v-local-key-provider/internal/protocol"
+	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
+type acquireOptions = acquisitionmodel.Options
 type databaseTargets = acquisitionmodel.Targets
 type databasePage = acquisitionmodel.DatabasePage
 type mediaEvidence = acquisitionmodel.MediaEvidence
@@ -68,21 +72,56 @@ type providerPlatformDriver struct{}
 
 func (providerPlatformDriver) Acquire(targets acquisitionmodel.Targets, media acquisitionmodel.MediaEvidence, request acquisitionmodel.PlatformRequest) (protocolmodel.Response, diagnosticmodel.Diagnostics, error) {
 	return platformAcquire(targets, media, acquireOptions{
-		accountDir: request.AccountDir, dbDir: request.DBDir,
-		database: request.Database, media: request.Media,
-		budget: budget{value: request.Budget}, helperMode: request.HelperMode,
-		helperStatus: request.HelperStatus, platformSession: request.PlatformSession,
-		actionReceipt: request.ActionReceipt,
+		AccountDir: request.AccountDir, DBDir: request.DBDir,
+		Database: request.Database, Media: request.Media,
+		Budget: request.Budget, HelperMode: request.HelperMode,
+		HelperStatus: request.HelperStatus, PlatformSession: request.PlatformSession,
+		ActionReceipt: request.ActionReceipt,
 	})
 }
 
 var platformDriver acquisitionmodel.PlatformDriver = providerPlatformDriver{}
 
-func platformRequestFromOptions(options acquireOptions) acquisitionmodel.PlatformRequest {
-	return acquisitionmodel.PlatformRequest{
-		AccountDir: options.accountDir, DBDir: options.dbDir,
-		Database: options.database, Media: options.media, Budget: options.budget.value,
-		HelperMode: options.helperMode, HelperStatus: options.helperStatus,
-		PlatformSession: options.platformSession, ActionReceipt: options.actionReceipt,
+func acquisitionOptionPolicy() acquisitionmodel.OptionPolicy {
+	return acquisitionmodel.OptionPolicy{
+		IsLinkOrReparse:  pathIsLinkOrReparse,
+		RandomCatalogKey: randomCatalogKey,
+		ClearSensitive:   zeroBytes,
 	}
+}
+
+func optionsFromRequest(request acquireRequest) (acquireOptions, error) {
+	return acquisitionmodel.ParseOptions(request, acquisitionOptionPolicy())
+}
+
+func securityPostureRevalidationOptions(request acquireRequest) (acquireOptions, error) {
+	return acquisitionmodel.ParseSecurityPostureOptions(request, acquisitionOptionPolicy())
+}
+
+func acquisitionWorkflowRuntime() acquisitionmodel.WorkflowRuntime {
+	return acquisitionmodel.WorkflowRuntime{
+		DiscoverTargets: func(dbDir string, remaining workbudget.Budget, catalogKey []byte) (acquisitionmodel.Targets, error) {
+			return discoverDatabaseTargetsWithKey(dbDir, budget{value: remaining}, catalogKey)
+		},
+		DiscoverMedia: func(accountDir string, remaining workbudget.Budget) acquisitionmodel.MediaEvidence {
+			return discoverMediaEvidence(accountDir, budget{value: remaining})
+		},
+		Driver:                  platformDriver,
+		ApplyDiagnosticDefaults: applyPlatformDiagnosticDefaults,
+		RandomCatalogKey:        randomCatalogKey,
+		CatalogHMAC:             catalogHMAC,
+		ProfileSummaries:        profileSummaries,
+		ClearSensitive:          zeroBytes,
+	}
+}
+
+func runAcquire(options acquireOptions) (response, error) {
+	return acquisitionmodel.Run(options, acquisitionWorkflowRuntime())
+}
+
+func runPreparedAcquire(options acquireOptions, targets databaseTargets, media mediaEvidence, started time.Time) (response, error) {
+	runtime := acquisitionWorkflowRuntime()
+	// Resolve the mutable test/platform seam at call time.
+	runtime.Driver = platformDriver
+	return acquisitionmodel.RunPrepared(options, targets, media, started, runtime)
 }

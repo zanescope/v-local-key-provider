@@ -21,7 +21,7 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 		Policy:      windowsRoutePolicy(),
 		Native:      windowsNativeDriver(),
 	})
-	return driver.Acquire(targets, media, platformRequestFromOptions(options))
+	return driver.Acquire(targets, media, options.PlatformRequest())
 }
 
 func platformProcessInstanceID() string {

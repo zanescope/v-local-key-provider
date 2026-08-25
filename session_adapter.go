@@ -8,26 +8,6 @@ import (
 	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
-func sessionOptionsFromAcquire(options acquireOptions) sessionmodel.Options {
-	return sessionmodel.Options{
-		AccountDir: options.accountDir, DBDir: options.dbDir,
-		Database: options.database, Media: options.media, Budget: options.budget.value,
-		HelperMode: options.helperMode, HelperStatus: options.helperStatus,
-		CatalogKey: options.catalogKey, PlatformSession: options.platformSession,
-		ActionReceipt: options.actionReceipt,
-	}
-}
-
-func acquireOptionsFromSession(options sessionmodel.Options) acquireOptions {
-	return acquireOptions{
-		accountDir: options.AccountDir, dbDir: options.DBDir,
-		database: options.Database, media: options.Media, budget: budget{value: options.Budget},
-		helperMode: options.HelperMode, helperStatus: options.HelperStatus,
-		catalogKey: options.CatalogKey, platformSession: options.PlatformSession,
-		actionReceipt: options.ActionReceipt,
-	}
-}
-
 // sessionPlatformDriver resolves the current composition-root driver for each
 // call so tests and platform builds can replace the driver without rebuilding
 // an already-created session coordinator.
@@ -45,8 +25,7 @@ func acquisitionSessionRuntime() sessionmodel.Runtime {
 	return sessionmodel.Runtime{
 		Protocol: protocolName,
 		ParseOptions: func(request protocolmodel.AcquireRequest) (sessionmodel.Options, error) {
-			options, err := optionsFromRequest(request)
-			return sessionOptionsFromAcquire(options), err
+			return optionsFromRequest(request)
 		},
 		DiscoverTargets: func(dbDir string, remaining workbudget.Budget, catalogKey []byte) (acquisitionmodel.Targets, error) {
 			return discoverDatabaseTargetsWithKey(dbDir, budget{value: remaining}, catalogKey)
@@ -55,7 +34,7 @@ func acquisitionSessionRuntime() sessionmodel.Runtime {
 			return discoverMediaEvidence(accountDir, budget{value: remaining})
 		},
 		PreparePlatformSession: func(targets acquisitionmodel.Targets, options sessionmodel.Options) acquisitionmodel.PlatformSession {
-			return preparePlatformAcquisitionSession(targets, acquireOptionsFromSession(options))
+			return preparePlatformAcquisitionSession(targets, options)
 		},
 		ProcessInstanceID: platformProcessInstanceID,
 		NewOpaqueID:       randomOpaqueID,

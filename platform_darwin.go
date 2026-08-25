@@ -55,12 +55,12 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 		CaptureHook:     runtime.hook.Capture,
 		SecurityPosture: defaultSecurityPostureStatus,
 	})
-	return driver.Acquire(targets, media, platformRequestFromOptions(options))
+	return driver.Acquire(targets, media, options.PlatformRequest())
 }
 
 func preparePlatformAcquisitionSession(targets databaseTargets, options acquireOptions) acquisitionPlatformSession {
 	runtime := newDarwinPlatformRuntime()
-	return runtime.hook.PrepareSession(targets, platformRequestFromOptions(options))
+	return runtime.hook.PrepareSession(targets, options.PlatformRequest())
 }
 
 func runPlatformHookWatchdog(args []string) error {

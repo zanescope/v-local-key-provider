@@ -312,3 +312,62 @@ func TestDiagnosticFinalizationStaysBehindInternalBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestAcquisitionWorkflowImplementationStaysBehindInternalBoundary(t *testing.T) {
+	if _, err := os.Stat("acquisition.go"); err == nil || !os.IsNotExist(err) {
+		t.Error("one-shot acquisition workflow returned to acquisition.go in the Provider root")
+	}
+	for _, name := range []string{"model.go", "options.go", "workflow.go"} {
+		if _, err := os.Stat(filepath.Join("internal", "acquisition", name)); err != nil {
+			t.Errorf("internal acquisition workflow is missing %s: %v", name, err)
+		}
+	}
+
+	adapter, err := os.ReadFile("acquisition_adapter.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{
+		"os.Lstat", "filepath.EvalSymlinks", "diagnosticmodel.Finalize", "time.Since", "PhaseTimingsMS[",
+	} {
+		if strings.Contains(string(adapter), forbidden) {
+			t.Errorf("acquisition composition adapter contains workflow implementation %q", forbidden)
+		}
+	}
+
+	sessionRuntime, err := os.ReadFile(filepath.Join("internal", "session", "runtime.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(sessionRuntime), "type Options = acquisitionmodel.Options") {
+		t.Error("session workflow defines a parallel acquisition Options DTO")
+	}
+
+	entries, err := os.ReadDir(filepath.Join("internal", "acquisition"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := token.NewFileSet()
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join("internal", "acquisition", name)
+		parsed, err := parser.ParseFile(files, path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Errorf("cannot parse %s: %v", path, err)
+			continue
+		}
+		for _, imported := range parsed.Imports {
+			value, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				t.Errorf("cannot decode import in %s: %v", path, err)
+				continue
+			}
+			if value == "github.com/zanescope/v-local-key-provider" || value == "github.com/zanescope/v-local-key-provider/internal/session" {
+				t.Errorf("%s imports outer workflow layer %q", path, value)
+			}
+		}
+	}
+}

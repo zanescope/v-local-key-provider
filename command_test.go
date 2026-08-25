@@ -79,7 +79,7 @@ func TestDecodeSecurityPostureRevalidationRequiresAFreshRequest(t *testing.T) {
 
 func TestSecurityPostureRevalidationNeverAcquiresCredentials(t *testing.T) {
 	request := acquireRequest{Protocol: protocolName, RequestID: "posture-1"}
-	options := acquireOptions{database: true, media: true}
+	options := acquireOptions{Database: true, Media: true}
 	enabled := securityPostureRevalidationResponse(request, options, "darwin", "sip_enabled_verified")
 	if enabled.Diagnostics.ResultCode != "complete" || enabled.Diagnostics.WorkflowStatus != "terminal" ||
 		enabled.Diagnostics.NextAction != "none" || enabled.Diagnostics.ActionStage != "security_posture_revalidation" ||
@@ -132,10 +132,10 @@ func TestOptionsFromRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !options.database || !options.media {
+	if !options.Database || !options.Media {
 		t.Fatalf("scope 未正确解析：%+v", options)
 	}
-	if got := string(options.catalogKey); got != string(bytes.Repeat([]byte{0xab}, 32)) {
+	if got := string(options.CatalogKey); got != string(bytes.Repeat([]byte{0xab}, 32)) {
 		t.Fatal("请求携带的 catalog key 未被原样使用")
 	}
 }
@@ -229,8 +229,8 @@ func TestRunAcquireReturnsDeadlineDiagnosticsAfterDiscoveryBudget(t *testing.T) 
 		t.Fatal(err)
 	}
 	result, err := runAcquire(acquireOptions{
-		accountDir: account, dbDir: db, database: true,
-		budget: newBudget(time.Now().Add(-time.Second), 1),
+		AccountDir: account, DBDir: db, Database: true,
+		Budget: newBudget(time.Now().Add(-time.Second), 1).value,
 	})
 	if err != nil {
 		t.Fatalf("expired discovery should return diagnostics, got error: %v", err)

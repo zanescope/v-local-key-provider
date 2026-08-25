@@ -28,7 +28,8 @@ type MediaEvidence struct {
 }
 
 // PlatformRequest contains only the acquisition inputs an OS driver needs.
-// Catalog-key handling and final response assembly remain at the command edge.
+// Catalog-key handling and final response assembly remain at the acquisition
+// workflow edge.
 type PlatformRequest struct {
 	AccountDir      string
 	DBDir           string

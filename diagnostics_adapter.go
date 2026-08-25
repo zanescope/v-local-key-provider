@@ -30,8 +30,8 @@ func finalizeDiagnostics(diag *diagnostics, targets databaseTargets, result resp
 		Catalog: targets.Catalog, RequiredDatabaseCount: targets.Count,
 		DatabaseKeys: result.DatabaseKeys, DatabaseCredential: result.DatabaseCredential,
 		ImageKeysPresent:  result.ImageKeys != nil,
-		DatabaseRequested: options.database, MediaRequested: options.media,
-		BudgetExpired: options.budget.expired(), PlatformDefaults: platformDiagnosticDefaults(),
+		DatabaseRequested: options.Database, MediaRequested: options.Media,
+		BudgetExpired: options.Budget.Expired(), PlatformDefaults: platformDiagnosticDefaults(),
 	})
 }
 

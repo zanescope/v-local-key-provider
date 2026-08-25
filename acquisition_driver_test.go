@@ -28,7 +28,7 @@ func TestPreparedAcquisitionUsesPlatformDriverSeam(t *testing.T) {
 		}}},
 	}
 	result, err := runPreparedAcquire(acquireOptions{
-		accountDir: t.TempDir(), database: true, budget: unlimitedBudget(), catalogKey: bytes.Repeat([]byte{0x5a}, 32),
+		AccountDir: t.TempDir(), Database: true, Budget: unlimitedBudget().value, CatalogKey: bytes.Repeat([]byte{0x5a}, 32),
 	}, targets, mediaEvidence{}, time.Now())
 	if err != nil {
 		t.Fatal(err)

@@ -60,8 +60,8 @@ func executeOneShotAcquire(request acquireRequest, helperMode bool, helperStatus
 	if err != nil {
 		return response{}, err
 	}
-	options.helperMode = helperMode
-	options.helperStatus = helperStatus
+	options.HelperMode = helperMode
+	options.HelperStatus = helperStatus
 	result, err := runAcquire(options)
 	if err != nil {
 		return response{}, err
@@ -72,7 +72,7 @@ func executeOneShotAcquire(request acquireRequest, helperMode bool, helperStatus
 }
 
 func securityPostureRevalidationResponse(request acquireRequest, options acquireOptions, platform, posture string) response {
-	diag := newDiagnostics(platform, requestedScopes(options.database, options.media))
+	diag := newDiagnostics(platform, requestedScopes(options.Database, options.Media))
 	diag.SecurityPostureStatus = posture
 	diag.ActionStage = "security_posture_revalidation"
 	applyFixedDiagnosticOutcome(&diag, "unsupported", "blocked", "stop_and_report", "security_posture_not_verified")
@@ -96,7 +96,7 @@ func executeSecurityPostureRevalidation(request acquireRequest) (response, error
 	if err != nil {
 		return response{}, err
 	}
-	defer zeroBytes(options.catalogKey)
+	defer zeroBytes(options.CatalogKey)
 	return securityPostureRevalidationResponse(request, options, platformNameForDiagnostics(), defaultSecurityPostureStatus()), nil
 }
 
@@ -186,13 +186,13 @@ func runMain() int {
 		return writeError(err, 2)
 	}
 	if !helperMode {
-		delegated, status := delegateToPlatformHelper(payload, options.budget)
+		delegated, status := delegateToPlatformHelper(payload, budget{value: options.Budget})
 		if delegated {
 			return 0
 		}
 		helperStatus = status
 	}
-	zeroBytes(options.catalogKey)
+	zeroBytes(options.CatalogKey)
 	result, err := executeOneShotAcquire(request, helperMode, helperStatus)
 	if err != nil {
 		return writeError(err, 3)

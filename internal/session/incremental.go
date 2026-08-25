@@ -66,7 +66,7 @@ func (coordinator *Coordinator) runIncremental(
 			return protocolmodel.Response{}, err
 		}
 		phaseStarted := time.Now()
-		next, diag, err = coordinator.runtime.Driver.Acquire(scanTargets, media, scanOptions.platformRequest())
+		next, diag, err = coordinator.runtime.Driver.Acquire(scanTargets, media, scanOptions.PlatformRequest())
 		if diag.PhaseTimingsMS == nil {
 			diag.PhaseTimingsMS = map[string]int64{}
 		}

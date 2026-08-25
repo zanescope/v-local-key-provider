@@ -10,30 +10,10 @@ import (
 	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
-// Options is the validated workflow input shared by session orchestration and
-// the platform acquisition boundary. Path validation and catalog-key creation
-// remain injected because they depend on composition-root policy.
-type Options struct {
-	AccountDir      string
-	DBDir           string
-	Database        bool
-	Media           bool
-	Budget          workbudget.Budget
-	HelperMode      bool
-	HelperStatus    string
-	CatalogKey      []byte
-	PlatformSession acquisitionmodel.PlatformSession
-	ActionReceipt   string
-}
-
-func (options Options) platformRequest() acquisitionmodel.PlatformRequest {
-	return acquisitionmodel.PlatformRequest{
-		AccountDir: options.AccountDir, DBDir: options.DBDir,
-		Database: options.Database, Media: options.Media, Budget: options.Budget,
-		HelperMode: options.HelperMode, HelperStatus: options.HelperStatus,
-		PlatformSession: options.PlatformSession, ActionReceipt: options.ActionReceipt,
-	}
-}
+// Options is the acquisition-owned DTO shared by one-shot and session
+// orchestration. The alias prevents either workflow from defining a parallel
+// representation.
+type Options = acquisitionmodel.Options
 
 // Environment contains daemon-owned context that is fixed before requests are
 // served and must not be accepted from the wire request.
@@ -44,7 +24,7 @@ type Environment struct {
 
 // Runtime is the narrow composition seam for workflow orchestration. The
 // coordinator owns state transitions and publication policy; callbacks own OS
-// trust, path validation, target discovery, and platform-specific finalization.
+// trust, path validation, target discovery, and platform diagnostic defaults.
 type Runtime struct {
 	Protocol string
 
