@@ -67,14 +67,14 @@ func (store *acquisitionSessionStore) sessionRequest(ctx context.Context, reques
 		options.actionReceipt = request.Workflow.ActionReceipt.Action
 	}
 	started := session.CreatedAt
-	targets := databaseTargets{catalog: databaseCatalog{}}
+	targets := databaseTargets{Catalog: databaseCatalog{}}
 	catalogRefreshStarted := time.Now()
 	if options.database {
 		targets, err = discoverDatabaseTargetsWithKey(options.dbDir, options.budget, options.catalogKey)
 		if err != nil {
 			return response{}, err
 		}
-		if targets.catalog.CatalogID != session.CatalogID {
+		if targets.Catalog.CatalogID != session.CatalogID {
 			return blockedSessionResponse(request, session, "catalog_drift"), nil
 		}
 	}
@@ -84,8 +84,8 @@ func (store *acquisitionSessionStore) sessionRequest(ctx context.Context, reques
 		result := *session.Latest
 		result.Protocol = protocolName
 		result.RequestID = request.RequestID
-		result.CatalogID = targets.catalog.CatalogID
-		result.CatalogEntries = append([]catalogDatabase(nil), targets.catalog.Databases...)
+		result.CatalogID = targets.Catalog.CatalogID
+		result.CatalogEntries = append([]catalogDatabase(nil), targets.Catalog.Databases...)
 		result.Profiles = profileSummaries()
 		result.Diagnostics.SessionID = session.ID
 		result.Diagnostics.SessionExpiresAt = session.ExpiresAt.UTC().Format(time.RFC3339Nano)

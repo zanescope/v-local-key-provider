@@ -1,4 +1,4 @@
-package provider
+package acquisition
 
 import "strings"
 
@@ -16,6 +16,13 @@ const (
 	maxScanRegionBytes = 512 * 1024 * 1024
 	// saltNeighborhoodWindow 是盐值邻域兜底扫描在盐值前后各展开的字节数。
 	saltNeighborhoodWindow = 4096
+)
+
+const (
+	ScanTailLength         = scanTailLength
+	V4KDFIterations        = v4KDFIterations
+	MaxScanRegionBytes     = maxScanRegionBytes
+	SaltNeighborhoodWindow = saltNeighborhoodWindow
 )
 
 var zeroKey32 = make([]byte, 32)
@@ -38,7 +45,7 @@ type globalPassphraseEvidence struct {
 }
 
 type databaseCandidateInfo struct {
-	profileID string
+	ProfileID string
 	origins   map[string]bool
 }
 
@@ -87,7 +94,8 @@ func (counters *candidateScanCounters) merge(other candidateScanCounters) {
 	counters.passphraseObservationCount += other.passphraseObservationCount
 }
 
-type candidateCollector struct {
+type Collector struct {
+	runtime                  Runtime
 	processInstanceID        string
 	validationBudget         budget
 	targets                  databaseTargets
@@ -105,40 +113,45 @@ type candidateCollector struct {
 	candidateScanCounters
 }
 
-func newCandidateCollector(targets databaseTargets, media mediaEvidence, budgets ...budget) *candidateCollector {
+func newCandidateCollector(targets databaseTargets, media mediaEvidence, budgets ...budget) *Collector {
+	return NewCollector(targets, media, DefaultRuntime(), budgets...)
+}
+
+func NewCollector(targets Targets, media MediaEvidence, runtime Runtime, budgets ...budget) *Collector {
 	validationBudget := unlimitedBudget()
 	if len(budgets) > 0 {
 		validationBudget = budgets[0]
 	}
-	collector := &candidateCollector{
+	collector := &Collector{
+		runtime:             runtime.normalized(),
 		validationBudget:    validationBudget,
 		targets:             targets,
 		salts:               map[string]bool{},
 		databaseCandidates:  map[string]map[string]*databaseCandidateInfo{},
-		mediaBlocks:         media.v2Blocks,
+		mediaBlocks:         media.V2Blocks,
 		seenMedia:           map[string]bool{},
 		mediaCandidates:     map[string]bool{},
 		seenDatabase:        map[string]bool{},
 		seenInternalXORKeys: map[string]bool{},
 		globalPassphrases:   map[string]*globalPassphraseEvidence{},
 	}
-	for salt := range targets.bySalt {
+	for salt := range targets.BySalt {
 		collector.salts[strings.ToLower(salt)] = true
 	}
 	return collector
 }
 
-func (collector *candidateCollector) clearSensitiveBuffers() {
+func (collector *Collector) clearSensitiveBuffers() {
 	if collector == nil {
 		return
 	}
 	for _, values := range [][][]byte{collector.binaryCandidates, collector.binaryFallbackCandidates, collector.internalXORKeys} {
 		for _, value := range values {
-			zeroBytes(value)
+			collector.runtime.ClearSensitive(value)
 		}
 	}
 	for _, evidence := range collector.globalPassphrases {
-		zeroBytes(evidence.secret)
+		collector.runtime.ClearSensitive(evidence.secret)
 		evidence.secret = nil
 	}
 	collector.binaryCandidates = nil
@@ -150,13 +163,13 @@ func (collector *candidateCollector) clearSensitiveBuffers() {
 // process collector. Raw memory candidates and unresolved passphrase buffers
 // deliberately stay behind so candidates from different process instances are
 // never combined before cryptographic validation.
-func (collector *candidateCollector) mergeValidatedFrom(other *candidateCollector) {
+func (collector *Collector) mergeValidatedFrom(other *Collector) {
 	if collector == nil || other == nil {
 		return
 	}
 	for path, candidates := range other.databaseCandidates {
 		for key, information := range candidates {
-			current, _ := collector.ensureDatabaseCandidate(path, key, information.profileID)
+			current, _ := collector.ensureDatabaseCandidate(path, key, information.ProfileID)
 			for origin := range information.origins {
 				current.origins[origin] = true
 			}
@@ -166,7 +179,7 @@ func (collector *candidateCollector) mergeValidatedFrom(other *candidateCollecto
 		current := collector.globalPassphrases[id]
 		if current == nil {
 			current = &globalPassphraseEvidence{
-				secret: cloneSensitiveBytes(evidence.secret), paths: map[string]bool{}, sources: map[string]bool{},
+				secret: collector.runtime.CloneSensitive(evidence.secret), paths: map[string]bool{}, sources: map[string]bool{},
 			}
 			collector.globalPassphrases[id] = current
 		}
@@ -189,17 +202,17 @@ func (collector *candidateCollector) mergeValidatedFrom(other *candidateCollecto
 	collector.candidateScanCounters.merge(observations)
 }
 
-func (collector *candidateCollector) databaseKeys(_ databaseTargets) (map[string]string, int) {
+func (collector *Collector) databaseKeys(_ databaseTargets) (map[string]string, int) {
 	keys := map[string]string{}
 	ambiguous := 0
 	collector.validatorConflictCount = 0
 	seenPaths := map[string]bool{}
-	for _, target := range collector.targets.pages {
-		if seenPaths[target.path] {
+	for _, target := range collector.targets.Pages {
+		if seenPaths[target.Path] {
 			continue
 		}
-		seenPaths[target.path] = true
-		candidates := collector.databaseCandidates[target.path]
+		seenPaths[target.Path] = true
+		candidates := collector.databaseCandidates[target.Path]
 		if len(candidates) != 1 {
 			if len(candidates) > 1 {
 				ambiguous++
@@ -215,35 +228,35 @@ func (collector *candidateCollector) databaseKeys(_ databaseTargets) (map[string
 		for candidate := range candidates {
 			key = candidate
 		}
-		keys[target.path] = key
+		keys[target.Path] = key
 	}
 	return keys, ambiguous
 }
 
-func (collector *candidateCollector) profilesForKeys(keys map[string]string) map[string]string {
+func (collector *Collector) profilesForKeys(keys map[string]string) map[string]string {
 	profiles := map[string]string{}
 	for path, key := range keys {
-		if information := collector.databaseCandidates[path][key]; information != nil && information.profileID != "" {
-			profiles[path] = information.profileID
+		if information := collector.databaseCandidates[path][key]; information != nil && information.ProfileID != "" {
+			profiles[path] = information.ProfileID
 		}
 	}
 	return profiles
 }
 
-func (collector *candidateCollector) hasAllDatabaseCandidates() bool {
-	if collector.targets.count == 0 || len(collector.targets.pages) != collector.targets.count {
+func (collector *Collector) hasAllDatabaseCandidates() bool {
+	if collector.targets.Count == 0 || len(collector.targets.Pages) != collector.targets.Count {
 		return false
 	}
-	for _, target := range collector.targets.pages {
-		if len(collector.databaseCandidates[target.path]) == 0 {
+	for _, target := range collector.targets.Pages {
+		if len(collector.databaseCandidates[target.Path]) == 0 {
 			return false
 		}
 	}
 	return true
 }
 
-func (collector *candidateCollector) resolvedMedia(evidence mediaEvidence) *imageKeys {
-	if len(collector.mediaCandidates) != 1 || len(evidence.xorCandidates) != 1 {
+func (collector *Collector) resolvedMedia(evidence mediaEvidence) *imageKeys {
+	if len(collector.mediaCandidates) != 1 || len(evidence.XORCandidates) != 1 {
 		return nil
 	}
 	var aesKey string
@@ -251,7 +264,7 @@ func (collector *candidateCollector) resolvedMedia(evidence mediaEvidence) *imag
 		aesKey = candidate
 	}
 	var xorKey byte
-	for candidate := range evidence.xorCandidates {
+	for candidate := range evidence.XORCandidates {
 		xorKey = candidate
 	}
 	return &imageKeys{AES: aesKey, XOR: int(xorKey)}
@@ -260,7 +273,7 @@ func (collector *candidateCollector) resolvedMedia(evidence mediaEvidence) *imag
 // applyScanDiagnostics 把收集器里的计数汇总进诊断结构，并按优先级决定最终图片密钥
 // （kvcomm 公式优先于进程内存样本）。各平台的 platformAcquire 收尾完全一致，故收拢在此，
 // 避免新增诊断字段时漏改某个平台。
-func (collector *candidateCollector) applyScanDiagnostics(diag *diagnostics, keys map[string]string, ambiguous int, derivedMedia *imageKeys, scanMedia mediaEvidence) *imageKeys {
+func (collector *Collector) applyScanDiagnostics(diag *diagnostics, keys map[string]string, ambiguous int, derivedMedia *imageKeys, scanMedia mediaEvidence) *imageKeys {
 	diag.ScanLimited = diag.ScanLimited || collector.mediaScanLimited || collector.databaseScanLimited
 	diag.MatchedDatabaseCount = len(keys)
 	diag.AmbiguousDatabaseKeys = ambiguous

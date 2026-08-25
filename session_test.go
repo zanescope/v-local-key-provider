@@ -608,9 +608,9 @@ func TestObserveKeepsSecretsInSessionUntilFinalize(t *testing.T) {
 }
 
 func TestFinalizeDiagnosticsRequiresSIPRestorationAfterVerifiedAcquisition(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	result := response{DatabaseKeys: map[string]string{"message.db": strings.Repeat("a", 64)}}
 	diag := diagnostics{Platform: "darwin", SecurityPostureStatus: "sip_disabled_verified", SessionAccountStatus: "known_target"}
 	finalizeDiagnostics(&diag, targets, result, acquireOptions{database: true, budget: unlimitedBudget()})
@@ -622,9 +622,9 @@ func TestFinalizeDiagnosticsRequiresSIPRestorationAfterVerifiedAcquisition(t *te
 }
 
 func TestFinalizeDiagnosticsRequiresSIPRestorationAfterFailedSIPRoute(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	diag := diagnostics{
 		Platform: "darwin", SecurityPostureStatus: "sip_disabled_verified",
 		RoutesAttempted: []string{"darwin_arm64_sip_disabled"},
@@ -638,7 +638,7 @@ func TestFinalizeDiagnosticsRequiresSIPRestorationAfterFailedSIPRoute(t *testing
 }
 
 func TestFinalizeDiagnosticsRequiresSIPRestorationBeforeSIPRouteStarts(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{}, count: 0}
+	targets := databaseTargets{Catalog: databaseCatalog{}, Count: 0}
 	diag := diagnostics{Platform: "darwin", SecurityPostureStatus: "sip_disabled_verified"}
 	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
 	if diag.ResultCode != "action_required" || diag.WorkflowStatus != "waiting_action" || diag.NextAction != "reenable_sip" ||
@@ -668,9 +668,9 @@ func TestMergeSessionDiagnosticEvidencePreservesPhase3MachineEvidence(t *testing
 }
 
 func TestFinalizeDiagnosticsCompletesWithVerifiedSIPEnabledPosture(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	result := response{DatabaseKeys: map[string]string{"message.db": strings.Repeat("a", 64)}}
 	diag := diagnostics{SecurityPostureStatus: "sip_enabled_verified"}
 	finalizeDiagnostics(&diag, targets, result, acquireOptions{database: true, budget: unlimitedBudget()})
@@ -680,9 +680,9 @@ func TestFinalizeDiagnosticsCompletesWithVerifiedSIPEnabledPosture(t *testing.T)
 }
 
 func TestUnavailableShadowRouteFallsThroughToSIPWithExplicitEvidence(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	diag := diagnostics{
 		Platform: "darwin", SecurityPostureStatus: "sip_enabled_verified",
 		ProcessAccessStatus: "denied", ProcessAccessError: "sip_enabled",
@@ -699,9 +699,9 @@ func TestUnavailableShadowRouteFallsThroughToSIPWithExplicitEvidence(t *testing.
 }
 
 func TestOtherTerminalShadowOutcomesAlsoFallThroughWithoutChangingTheirMeaning(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	for _, test := range []struct {
 		status          string
 		reason          string
@@ -725,9 +725,9 @@ func TestOtherTerminalShadowOutcomesAlsoFallThroughWithoutChangingTheirMeaning(t
 }
 
 func TestAvailableShadowRouteRetainsPriorityOverSIP(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	diag := diagnostics{
 		Platform: "darwin", SecurityPostureStatus: "sip_enabled_verified", ShadowRouteStatus: "available",
 		ProcessAccessStatus: "denied", ProcessAccessError: "sip_enabled",
@@ -741,9 +741,9 @@ func TestAvailableShadowRouteRetainsPriorityOverSIP(t *testing.T) {
 }
 
 func TestUnevaluatedShadowRouteCannotBeSkipped(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	diag := diagnostics{
 		Platform: "darwin", SecurityPostureStatus: "sip_enabled_verified", ShadowRouteStatus: "not_evaluated",
 		ProcessAccessStatus: "denied", ProcessAccessError: "sip_enabled",
@@ -756,9 +756,9 @@ func TestUnevaluatedShadowRouteCannotBeSkipped(t *testing.T) {
 }
 
 func TestSIPFallbackRequiresVerifiedSecurityPosture(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	diag := diagnostics{
 		Platform: "darwin", SecurityPostureStatus: "not_evaluated",
 		ProcessAccessStatus: "denied", ProcessAccessError: "sip_enabled",
@@ -772,9 +772,9 @@ func TestSIPFallbackRequiresVerifiedSecurityPosture(t *testing.T) {
 }
 
 func TestMediaFailureDoesNotDowngradeDatabaseCoverage(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	result := response{DatabaseKeys: map[string]string{"message.db": strings.Repeat("a", 64)}}
 	diag := diagnostics{}
 	finalizeDiagnostics(&diag, targets, result, acquireOptions{database: true, media: true, budget: unlimitedBudget()})
@@ -784,7 +784,7 @@ func TestMediaFailureDoesNotDowngradeDatabaseCoverage(t *testing.T) {
 }
 
 func TestEmptyDatabaseCatalogIsNotComplete(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{}, count: 0}
+	targets := databaseTargets{Catalog: databaseCatalog{}, Count: 0}
 	diag := diagnostics{}
 	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
 	if diag.DatabaseTargetStatus != "none" || diag.DatabaseCoverageStatus != "none" || diag.ResultCode == "complete" ||
@@ -794,10 +794,10 @@ func TestEmptyDatabaseCatalogIsNotComplete(t *testing.T) {
 }
 
 func TestPlaintextCatalogCompletesWithoutDatabaseKey(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-plain", RelativePath: "plain.db", Classification: classificationPlaintext,
 		RequiredForKeyCoverage: false,
-	}}}, count: 0}
+	}}}, Count: 0}
 	diag := diagnostics{SecurityPostureStatus: "not_applicable"}
 	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
 	if diag.DatabaseTargetStatus != "present" || diag.DatabaseCoverageStatus != "complete" || diag.ResultCode != "complete" ||
@@ -817,9 +817,9 @@ func TestMediaOnlyCoverageDoesNotClaimDatabaseCompletion(t *testing.T) {
 }
 
 func TestAllRequestedScopesCompleteProduceOverallComplete(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	result := response{
 		DatabaseKeys: map[string]string{"message.db": strings.Repeat("a", 64)},
 		ImageKeys:    &imageKeys{AES: "1234567890abcdef", XOR: 7},
@@ -851,9 +851,9 @@ func TestCoverageDiagnosticsJSONUsesOnlyScopeQualifiedFields(t *testing.T) {
 }
 
 func TestFinalizeDiagnosticsPrioritizesAccountMismatchOverCompleteCoverage(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	result := response{DatabaseKeys: map[string]string{"message.db": strings.Repeat("a", 64)}}
 	diag := diagnostics{TargetBindingStatus: "mismatch", SessionAccountStatus: "known_other"}
 	finalizeDiagnostics(&diag, targets, result, acquireOptions{database: true, budget: unlimitedBudget()})
@@ -863,9 +863,9 @@ func TestFinalizeDiagnosticsPrioritizesAccountMismatchOverCompleteCoverage(t *te
 }
 
 func TestBudgetExhaustionCannotOverwriteHigherPriorityTerminalOutcome(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	for _, test := range []struct {
 		name               string
 		diag               diagnostics
@@ -890,9 +890,9 @@ func TestBudgetExhaustionCannotOverwriteHigherPriorityTerminalOutcome(t *testing
 }
 
 func TestBudgetExhaustionIsAuthoritativeWhenNoHigherPriorityOutcomeExists(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{Databases: []catalogDatabase{{
 		DatabaseID: "db-1", RelativePath: "message.db", RequiredForKeyCoverage: true,
-	}}}, count: 1}
+	}}}, Count: 1}
 	diag := diagnostics{BudgetExhausted: true, ProcessAccessStatus: "opened"}
 	finalizeDiagnostics(&diag, targets, response{}, acquireOptions{database: true, budget: unlimitedBudget()})
 	if diag.ResultCode != "deadline_exhausted" || diag.WorkflowStatus != "terminal" || diag.NextAction != "stop_and_report" ||
@@ -935,15 +935,15 @@ func TestSecondPrepareDoesNotDestroyActiveAccountSession(t *testing.T) {
 
 func TestMissingOnlyTargetsExcludesAlreadyVerifiedDatabase(t *testing.T) {
 	targets := databaseTargets{
-		catalog: databaseCatalog{CatalogID: "catalog", Databases: []catalogDatabase{
+		Catalog: databaseCatalog{CatalogID: "catalog", Databases: []catalogDatabase{
 			{DatabaseID: "db-a", RelativePath: "a.db", Salt: "aa", Classification: classificationEncrypted, RequiredForKeyCoverage: true},
 			{DatabaseID: "db-b", RelativePath: "b.db", Salt: "bb", Classification: classificationEncrypted, RequiredForKeyCoverage: true},
 		}},
-		pages: []databasePage{{path: "a.db", salt: "aa"}, {path: "b.db", salt: "bb"}},
+		Pages: []databasePage{{Path: "a.db", Salt: "aa"}, {Path: "b.db", Salt: "bb"}},
 	}
-	targets = targetsFromCatalog(targets.catalog, targets.pages)
+	targets = targetsFromCatalog(targets.Catalog, targets.Pages)
 	missing := missingOnlyTargets(targets, map[string]string{"a.db": strings.Repeat("a", 64)})
-	if missing.count != 1 || len(missing.pages) != 1 || missing.pages[0].path != "b.db" || len(missing.bySalt["aa"]) != 0 {
+	if missing.Count != 1 || len(missing.Pages) != 1 || missing.Pages[0].Path != "b.db" || len(missing.BySalt["aa"]) != 0 {
 		t.Fatalf("missing-only target set is invalid: %+v", missing)
 	}
 }

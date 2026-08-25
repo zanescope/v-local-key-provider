@@ -1,4 +1,4 @@
-package provider
+package acquisition
 
 import "crypto/aes"
 
@@ -30,6 +30,6 @@ func validateMediaAESBlocks(blocks [][16]byte, candidate string) bool {
 	return true
 }
 
-func (collector *candidateCollector) validateMediaAES(candidate string) bool {
+func (collector *Collector) validateMediaAES(candidate string) bool {
 	return validateMediaAESBlocks(collector.mediaBlocks, candidate)
 }

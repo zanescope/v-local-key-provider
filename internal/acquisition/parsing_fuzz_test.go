@@ -1,4 +1,4 @@
-package provider
+package acquisition
 
 import (
 	"sync/atomic"
@@ -48,7 +48,7 @@ func FuzzScanDatabasePatterns(f *testing.F) {
 		if len(data) > 1<<20 {
 			t.Skip()
 		}
-		collector := newCandidateCollector(databaseTargets{bySalt: map[string][]string{}}, mediaEvidence{})
+		collector := newCandidateCollector(databaseTargets{BySalt: map[string][]string{}}, mediaEvidence{})
 		collector.scanDatabasePatterns(data)
 	})
 }
@@ -60,9 +60,9 @@ func FuzzScanMediaPatterns(f *testing.F) {
 		if len(data) > 1<<18 {
 			t.Skip()
 		}
-		collector := newCandidateCollector(databaseTargets{bySalt: map[string][]string{}},
-			mediaEvidence{v2Blocks: [][16]byte{{}}})
-		collector.scanMediaPatterns(data)
+		collector := newCandidateCollector(databaseTargets{BySalt: map[string][]string{}},
+			mediaEvidence{V2Blocks: [][16]byte{{}}})
+		collector.ScanMediaPatterns(data)
 	})
 }
 

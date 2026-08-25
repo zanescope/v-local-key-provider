@@ -94,24 +94,24 @@ func scanProcessStage(handle syscall.Handle, collector *candidateCollector, limi
 				switch stage {
 				case "structured_key_object":
 					if regionType == memImage {
-						collector.scanInternalXORKeys(combined)
+						collector.ScanInternalXORKeys(combined)
 					}
 					if allowKeyObjects {
-						collector.collectKeyObjects(combined, seenPointers, func(pointer uint64, buffer []byte) int {
+						collector.CollectKeyObjects(combined, seenPointers, func(pointer uint64, buffer []byte) int {
 							return reader(pointer, buffer)
 						})
 					}
 				case "salt_neighborhood":
-					collector.scanSaltNeighborhood(combined)
+					collector.ScanSaltNeighborhood(combined)
 				case "bounded_writable_heap":
-					collector.scanDatabasePatternsFrom(combined, "bounded_heap")
-					collector.scanMediaPatterns(combined)
+					collector.ScanDatabasePatternsFrom(combined, "bounded_heap")
+					collector.ScanMediaPatterns(combined)
 				case "bounded_readonly":
-					collector.scanDatabasePatternsFrom(combined, "bounded_readonly")
-					collector.scanMediaPatterns(combined)
+					collector.ScanDatabasePatternsFrom(combined, "bounded_readonly")
+					collector.ScanMediaPatterns(combined)
 				case "bounded_hex":
-					collector.scanDatabasePatternsFrom(combined, "bounded_hex")
-					collector.scanMediaPatterns(combined)
+					collector.ScanDatabasePatternsFrom(combined, "bounded_hex")
+					collector.ScanMediaPatterns(combined)
 				}
 			},
 		},
@@ -125,7 +125,7 @@ func scanProcess(handle syscall.Handle, collector *candidateCollector, limit uin
 	var scanned uint64
 	limited := false
 	for _, stage := range windowsFallbackStages {
-		if scanned >= limit || remaining.expired() || collector.hasAllDatabaseCandidates() {
+		if scanned >= limit || remaining.expired() || collector.HasAllDatabaseCandidates() {
 			break
 		}
 		stageLimit := stage.PerProcessLimit

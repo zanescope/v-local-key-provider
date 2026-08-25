@@ -179,7 +179,7 @@ func runAcquire(options acquireOptions) (response, error) {
 
 func runPreparedAcquire(options acquireOptions, targets databaseTargets, media mediaEvidence, started time.Time) (response, error) {
 	phaseStarted := time.Now()
-	result, diag, err := platformAcquire(targets, media, options)
+	result, diag, err := platformDriver.Acquire(targets, media, platformRequestFromOptions(options))
 	if err != nil {
 		return response{}, err
 	}
@@ -191,8 +191,8 @@ func runPreparedAcquire(options acquireOptions, targets databaseTargets, media m
 	diag.ElapsedMS = time.Since(started).Milliseconds()
 	diag.BudgetExhausted = options.budget.expired()
 	finalizeDiagnostics(&diag, targets, result, options)
-	result.CatalogID = targets.catalog.CatalogID
-	result.CatalogEntries = append([]catalogDatabase(nil), targets.catalog.Databases...)
+	result.CatalogID = targets.Catalog.CatalogID
+	result.CatalogEntries = append([]catalogDatabase(nil), targets.Catalog.Databases...)
 	if result.DatabaseCredential != nil {
 		result.DatabaseCredential.AccountBindingID = catalogHMAC(options.catalogKey, "account", options.accountDir)
 	}
@@ -203,7 +203,7 @@ func runPreparedAcquire(options acquireOptions, targets databaseTargets, media m
 
 func missingDatabaseIDs(targets databaseTargets, keys map[string]string) []string {
 	missing := []string{}
-	for _, database := range targets.catalog.Databases {
+	for _, database := range targets.Catalog.Databases {
 		if !database.RequiredForKeyCoverage {
 			continue
 		}

@@ -2,7 +2,10 @@
 
 package provider
 
-import "testing"
+import (
+	"crypto/aes"
+	"testing"
+)
 
 func TestParseDarwinProcessListFiltersHelpers(t *testing.T) {
 	processes := parseDarwinProcessList("" +
@@ -35,7 +38,15 @@ func TestDarwinProcessExecutablePreservesSpacesInBundlePathFallback(t *testing.T
 }
 
 func TestDarwinPipelineDoesNotStopAfterDatabaseWhenMediaIsStillMissing(t *testing.T) {
-	evidence := mediaEvidence{xorCandidates: map[byte]int{0x2a: 1}}
+	const mediaKey = "0123456789abcdef"
+	block, err := aes.NewCipher([]byte(mediaKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := [16]byte{0xff, 0xd8, 0xff}
+	var encrypted [16]byte
+	block.Encrypt(encrypted[:], plain[:])
+	evidence := mediaEvidence{V2Blocks: [][16]byte{encrypted}, XORCandidates: map[byte]int{0x2a: 1}}
 	collector := newCandidateCollector(databaseTargets{}, evidence, unlimitedBudget())
 	pipeline := darwinAcquisitionPipeline{
 		collector: collector, scanMedia: evidence, needDatabaseScan: false, needMediaScan: true,
@@ -43,7 +54,7 @@ func TestDarwinPipelineDoesNotStopAfterDatabaseWhenMediaIsStillMissing(t *testin
 	if pipeline.satisfied() {
 		t.Fatal("pipeline stopped with requested media evidence still unresolved")
 	}
-	collector.mediaCandidates["0123456789abcdef"] = true
+	collector.ScanMediaPatterns([]byte(mediaKey))
 	if !pipeline.satisfied() {
 		t.Fatal("pipeline did not stop after every requested scope was resolved")
 	}

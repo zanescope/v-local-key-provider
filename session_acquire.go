@@ -6,10 +6,10 @@ func missingOnlyTargets(targets databaseTargets, existing map[string]string) dat
 	if len(existing) == 0 {
 		return targets
 	}
-	subsetCatalog, missingPaths := missingCatalog(targets.catalog, existing)
+	subsetCatalog, missingPaths := missingCatalog(targets.Catalog, existing)
 	pages := make([]databasePage, 0, len(missingPaths))
-	for _, page := range targets.pages {
-		if missingPaths[page.path] {
+	for _, page := range targets.Pages {
+		if missingPaths[page.Path] {
 			pages = append(pages, page)
 		}
 	}
@@ -48,7 +48,7 @@ func runIncrementalSessionAcquire(options acquireOptions, fullTargets databaseTa
 	}
 	scanTargets := missingOnlyTargets(fullTargets, previousKeys)
 	scanOptions := options
-	scanOptions.database = options.database && scanTargets.count > 0
+	scanOptions.database = options.database && scanTargets.Count > 0
 	if existing != nil && existing.ImageKeys != nil {
 		scanOptions.media = false
 	}
@@ -57,7 +57,7 @@ func runIncrementalSessionAcquire(options acquireOptions, fullTargets databaseTa
 	var err error
 	if scanOptions.database || scanOptions.media {
 		phaseStarted := time.Now()
-		next, diag, err = platformAcquire(scanTargets, media, scanOptions)
+		next, diag, err = platformDriver.Acquire(scanTargets, media, platformRequestFromOptions(scanOptions))
 		if diag.PhaseTimingsMS == nil {
 			diag.PhaseTimingsMS = map[string]int64{}
 		}
@@ -77,8 +77,8 @@ func runIncrementalSessionAcquire(options acquireOptions, fullTargets databaseTa
 	diag.PhaseTimingsMS["total"] = diag.ElapsedMS
 	diag.BudgetExhausted = options.budget.expired()
 	finalizeDiagnostics(&diag, fullTargets, merged, options)
-	merged.CatalogID = fullTargets.catalog.CatalogID
-	merged.CatalogEntries = append([]catalogDatabase(nil), fullTargets.catalog.Databases...)
+	merged.CatalogID = fullTargets.Catalog.CatalogID
+	merged.CatalogEntries = append([]catalogDatabase(nil), fullTargets.Catalog.Databases...)
 	if merged.DatabaseCredential != nil {
 		merged.DatabaseCredential.AccountBindingID = catalogHMAC(options.catalogKey, "account", options.accountDir)
 	}

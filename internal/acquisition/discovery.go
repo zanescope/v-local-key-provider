@@ -1,4 +1,4 @@
-package provider
+package acquisition
 
 import (
 	"bytes"
@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	catalogmodel "github.com/zanescope/v-local-key-provider/internal/catalog"
 )
 
 var (
@@ -21,13 +23,6 @@ var (
 	statisticName = regexp.MustCompile(`(?i)^key_(\d{1,10})_.+\.statistic$`)
 	accountSuffix = regexp.MustCompile(`(?i)^(.+)_([0-9a-f]{4,})$`)
 )
-
-type databaseTargets struct {
-	bySalt  map[string][]string
-	pages   []databasePage
-	count   int
-	catalog databaseCatalog
-}
 
 func cleanWXID(accountName string) string {
 	if !strings.HasPrefix(strings.ToLower(accountName), "wxid_") {
@@ -175,10 +170,10 @@ func resolveKVCommMedia(accountDir string, evidence mediaEvidence) (*imageKeys, 
 	for _, code := range codes {
 		for _, accountName := range accountNames {
 			candidate := deriveImageKeysExact(code, accountName)
-			if !validateMediaAESBlocks(evidence.v2Blocks, candidate.AES) {
+			if !validateMediaAESBlocks(evidence.V2Blocks, candidate.AES) {
 				continue
 			}
-			if count, found := evidence.xorCandidates[byte(candidate.XOR)]; !found || count == 0 {
+			if count, found := evidence.XORCandidates[byte(candidate.XOR)]; !found || count == 0 {
 				continue
 			}
 			fingerprint := candidate.AES + ":" + strconv.Itoa(candidate.XOR)
@@ -195,27 +190,14 @@ func resolveKVCommMedia(accountDir string, evidence mediaEvidence) (*imageKeys, 
 	return &matches[0], len(codes), 1
 }
 
-type databasePage struct {
-	databaseID string
-	salt       string
-	path       string
-	profileID  string
-	data       []byte
-}
-
-type mediaEvidence struct {
-	v2Blocks      [][16]byte
-	xorCandidates map[byte]int
-}
-
 func selectDominantXOR(evidence mediaEvidence) (mediaEvidence, bool, int, int) {
-	selected := mediaEvidence{v2Blocks: evidence.v2Blocks, xorCandidates: map[byte]int{}}
-	if len(evidence.xorCandidates) == 0 {
+	selected := mediaEvidence{V2Blocks: evidence.V2Blocks, XORCandidates: map[byte]int{}}
+	if len(evidence.XORCandidates) == 0 {
 		return selected, false, 0, 0
 	}
 	var leadingKey byte
 	leading, second := 0, 0
-	for candidate, count := range evidence.xorCandidates {
+	for candidate, count := range evidence.XORCandidates {
 		if count > leading {
 			second = leading
 			leading = count
@@ -224,41 +206,39 @@ func selectDominantXOR(evidence mediaEvidence) (mediaEvidence, bool, int, int) {
 			second = count
 		}
 	}
-	if len(evidence.xorCandidates) > 1 && (leading < 3 || leading < second*4) {
+	if len(evidence.XORCandidates) > 1 && (leading < 3 || leading < second*4) {
 		return selected, false, leading, second
 	}
-	selected.xorCandidates[leadingKey] = leading
+	selected.XORCandidates[leadingKey] = leading
 	return selected, true, leading, second
 }
 
 func targetsFromCatalog(catalog databaseCatalog, pages []databasePage) databaseTargets {
-	targets := databaseTargets{bySalt: map[string][]string{}, pages: pages, catalog: catalog}
+	targets := databaseTargets{BySalt: map[string][]string{}, Pages: pages, Catalog: catalog}
 	for _, database := range catalog.Databases {
 		if database.RequiredForKeyCoverage {
-			targets.count++
+			targets.Count++
 		}
-		if database.Classification == classificationEncrypted && database.Salt != "" {
-			targets.bySalt[database.Salt] = append(targets.bySalt[database.Salt], database.RelativePath)
+		if database.Classification == catalogmodel.ClassificationEncrypted && database.Salt != "" {
+			targets.BySalt[database.Salt] = append(targets.BySalt[database.Salt], database.RelativePath)
 		}
 	}
 	return targets
 }
 
-func discoverDatabaseTargetsWithKey(dbDir string, remaining budget, catalogKey []byte) (databaseTargets, error) {
-	catalog, pages, err := discoverDatabaseCatalog(dbDir, remaining, catalogKey)
-	if err != nil {
-		return databaseTargets{}, err
-	}
-	return targetsFromCatalog(catalog, pages), nil
+func TargetsFromCatalog(catalog catalogmodel.Catalog, pages []DatabasePage) Targets {
+	return targetsFromCatalog(catalog, pages)
 }
 
-func discoverDatabaseTargets(dbDir string, remaining budget) (databaseTargets, error) {
-	key, err := randomCatalogKey()
-	if err != nil {
-		return databaseTargets{}, err
+func DiscoverDatabaseTargets(dbDir string, remaining budget, catalogKey []byte, policy catalogmodel.PlatformPolicy) (Targets, error) {
+	if policy.AcquisitionExpired == nil {
+		policy.AcquisitionExpired = remaining.Expired
 	}
-	defer zeroBytes(key)
-	return discoverDatabaseTargetsWithKey(dbDir, remaining, key)
+	catalog, pages, err := catalogmodel.Discover(dbDir, catalogKey, policy)
+	if err != nil {
+		return Targets{}, err
+	}
+	return targetsFromCatalog(catalog, pages), nil
 }
 
 func resolveCaseInsensitive(base string, parts ...string) string {
@@ -327,10 +307,10 @@ func inspectDAT(path string, evidence *mediaEvidence) {
 	n, _ := io.ReadFull(file, header)
 	header = header[:n]
 	if bytes.HasPrefix(header, v2Magic) {
-		if len(header) >= 31 && len(evidence.v2Blocks) < 3 {
+		if len(header) >= 31 && len(evidence.V2Blocks) < 3 {
 			var block [16]byte
 			copy(block[:], header[15:31])
-			evidence.v2Blocks = append(evidence.v2Blocks, block)
+			evidence.V2Blocks = append(evidence.V2Blocks, block)
 		}
 		if _, err := file.Seek(-2, io.SeekEnd); err == nil {
 			tail := make([]byte, 2)
@@ -338,7 +318,7 @@ func inspectDAT(path string, evidence *mediaEvidence) {
 				left := tail[0] ^ 0xff
 				right := tail[1] ^ 0xd9
 				if left == right {
-					evidence.xorCandidates[left]++
+					evidence.XORCandidates[left]++
 				}
 			}
 		}
@@ -356,21 +336,21 @@ func inspectDAT(path string, evidence *mediaEvidence) {
 	}
 	for _, signature := range signatures {
 		if key, ok := inferPrefixXOR(header, signature); ok {
-			evidence.xorCandidates[key]++
+			evidence.XORCandidates[key]++
 			break
 		}
 	}
 }
 
 func discoverMediaEvidence(accountDir string, budget budget) mediaEvidence {
-	evidence := mediaEvidence{xorCandidates: map[byte]int{}}
+	evidence := mediaEvidence{XORCandidates: map[byte]int{}}
 	inspected := 0
 	for _, root := range mediaRoots(accountDir) {
-		if budget.expired() {
+		if budget.Expired() {
 			break
 		}
 		_ = filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
-			if budget.expired() {
+			if budget.Expired() {
 				return fs.SkipAll
 			}
 			if walkErr != nil {
@@ -396,4 +376,16 @@ func discoverMediaEvidence(accountDir string, budget budget) mediaEvidence {
 		}
 	}
 	return evidence
+}
+
+func DiscoverMediaEvidence(accountDir string, remaining budget) MediaEvidence {
+	return discoverMediaEvidence(accountDir, remaining)
+}
+
+func SelectDominantXOR(evidence MediaEvidence) (MediaEvidence, bool, int, int) {
+	return selectDominantXOR(evidence)
+}
+
+func ResolveKVCommMedia(accountDir string, evidence MediaEvidence) (*imageKeys, int, int) {
+	return resolveKVCommMedia(accountDir, evidence)
 }

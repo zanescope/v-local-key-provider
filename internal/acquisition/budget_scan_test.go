@@ -1,11 +1,17 @@
-package provider
+package acquisition
 
 import (
 	"encoding/hex"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
+
+func newBudget(start time.Time, milliseconds int64) budget {
+	return workbudget.New(start, milliseconds)
+}
 
 // 构造一批不可能命中的假口令候选。若不检查时限，每个都要跑满 25.6 万轮
 // PBKDF2（实测约 164 毫秒）；已过期的预算必须让整个口令暴力过程近乎立即返回。
@@ -23,7 +29,7 @@ func fakePassphraseCandidates(count int) [][]byte {
 
 func fakeDatabasePage() databasePage {
 	// 4096 字节全零页：解不出任何有效 SQLCipher 头，保证不会误命中。
-	return databasePage{salt: "00000000000000000000000000000000", data: make([]byte, 4096)}
+	return databasePage{Salt: "00000000000000000000000000000000", Data: make([]byte, 4096)}
 }
 
 func TestFindV4PassphraseHonorsExpiredBudget(t *testing.T) {
@@ -47,8 +53,8 @@ func TestFindV4PassphraseHonorsExpiredBudget(t *testing.T) {
 func TestResolveDatabasePassphraseHonorsExpiredBudget(t *testing.T) {
 	collector := newCandidateCollector(
 		databaseTargets{
-			bySalt: map[string][]string{"00000000000000000000000000000000": {"message_0.db"}},
-			pages:  []databasePage{fakeDatabasePage()},
+			BySalt: map[string][]string{"00000000000000000000000000000000": {"message_0.db"}},
+			Pages:  []databasePage{fakeDatabasePage()},
 		},
 		mediaEvidence{},
 	)
@@ -56,7 +62,7 @@ func TestResolveDatabasePassphraseHonorsExpiredBudget(t *testing.T) {
 
 	expired := newBudget(time.Now().Add(-time.Second), 100)
 	start := time.Now()
-	collector.resolveDatabasePassphrase(expired)
+	collector.ResolveDatabasePassphrase(expired)
 	elapsed := time.Since(start)
 
 	if elapsed > 3*time.Second {
@@ -75,10 +81,10 @@ func TestRecordGlobalPassphraseCanBeCancelledInsideKDF(t *testing.T) {
 		t.Fatal(err)
 	}
 	collector := newCandidateCollector(
-		databaseTargets{pages: []databasePage{page}, count: 1}, mediaEvidence{}, newBudget(time.Now(), 1),
+		databaseTargets{Pages: []databasePage{page}, Count: 1}, mediaEvidence{}, newBudget(time.Now(), 1),
 	)
 	started := time.Now()
-	if collector.recordGlobalPassphrase(passphrase, "test", false) {
+	if collector.RecordGlobalPassphrase(passphrase, "test", false) {
 		t.Fatal("deadline-expired KDF unexpectedly published a candidate")
 	}
 	if elapsed := time.Since(started); elapsed > time.Second {

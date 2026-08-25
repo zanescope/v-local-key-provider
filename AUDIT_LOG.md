@@ -4,6 +4,30 @@
 
 审计条目按时间倒序记录。每条结论只对其标明的代码基线成立；后续复核可以取代旧结论，但不得静默改写历史。
 
+## 2026-08-25 D-1 acquisition 垂直切片续作
+
+本轮以 daemon 切片提交 `b2677f0` 为起点，落实上一节约定的 `internal/acquisition` 模型与 platform driver seam；没有改写 Phase 0-5 的能力门禁。
+
+### 实际迁移结果
+
+- 新增 `internal/acquisition`，统一拥有 database targets/page、media evidence、candidate collector、模式与盐邻域扫描、数据库/媒体验证、passphrase/KDF 调度、credential 组装、database/media discovery，以及同步 platform session。原 root `candidate_collector.go`、`candidate_patterns.go`、`database_validator.go`、`media_validator.go`、`discovery.go` 已删除，不保留双实现。
+- collector 的 profile registry、敏感内存登记/清零/克隆和 opaque ID 生成由 `Runtime` 注入；database discovery 的 file identity、link/reparse 与 canonical path policy 仍由进程边界注入。`internal/acquisition` 不 import Provider 根包。
+- 收尾回归确认显式非 nil 空 profile registry 不会在归一化或隔离 collector 时恢复默认值；XOR 变换中因重复或上限被丢弃的已登记临时缓冲区也会立即清零。
+- Darwin/Windows 平台代码不再读取 collector 私有字段，只通过目标绑定验证、扫描、隔离 collector、已验真合并、诊断快照和 credential 组装方法交互。Darwin rounds=2 PBKDF 证据的 XOR-salt/profile 验证也进入 acquisition 所有者，避免平台层平行实现 raw-key 验证。
+- `PlatformDriver`/`PlatformRequest` 成为 one-shot 与增量 session 的共同入口；build-tagged `platformAcquire` 只由单一 root adapter 调用。新增可替换 driver 回归，证明 prepared acquisition 不会绕过 seam。
+- collector/discovery/validator/credential/page-header 的单测、benchmark 与 fuzz 跟随所有者迁入 `internal/acquisition` 或 `internal/crypto`。根目录生产 Go 文件由 71 个降至 67 个，根测试由 32 个降至 26 个；新增包含 10 个生产文件与 8 个测试文件。
+
+### 本轮验证
+
+| 检查 | 结果 |
+| --- | --- |
+| Windows 原生 | 固定工作区 Go cache/temp 下 `go test ./...` 全包通过；`go vet ./...` 通过。 |
+| WSL Go | 原生 `/tmp` 下 `go test ./...` 与 `go test -race ./...` 全包通过。首次把 Go temp 放在 NTFS 挂载目录时，daemon 的 Unix owner/mode 回归按设计拒绝该目录；这不是代码断言回归。 |
+| 跨平台 build tags | Darwin amd64/arm64（`CGO_ENABLED=0`）与 Windows/ARM64 全包构建通过；仍只是编译检查，不冒充 Darwin cgo 或真机执行。 |
+| npm / 静态 | Provider npm 13/13；`git diff --check`、受控 `gofmt -l` 与 seam/私有字段依赖扫描通过。 |
+
+这次切片没有解除空生产 registry、Darwin cgo/真机、最终签名件、notarization 或 Trusted Publishing 门禁。若继续降低根目录密度，下一步应以完整原生平台垂直切片推进：先定义 process/memory driver 输入输出，再选择 Windows 或 Darwin 一侧整体迁移；不应继续搬零散 adapter 或仅为减少文件数改名。
+
 ## 2026-08-25 D-1 daemon 垂直切片续作
 
 本轮以本地全绿 checkpoint `c71cc37`（`refactor: complete phase 0-5 review checkpoint`）为起点。审计落款写入前的代码 tree 为 `22cf0c10f220ea0ba4a341d55ffa0ea9c341c480`（183 个非忽略文件）；其后只追加本节记录，没有再修改生产代码或测试。

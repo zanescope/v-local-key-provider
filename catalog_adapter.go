@@ -49,15 +49,5 @@ func discoverDatabaseCatalog(dbDir string, remaining budget, key []byte) (databa
 	if err != nil {
 		return databaseCatalog{}, nil, err
 	}
-	converted := make([]databasePage, 0, len(pages))
-	for _, page := range pages {
-		converted = append(converted, databasePage{
-			databaseID: page.DatabaseID,
-			salt:       page.Salt,
-			path:       page.Path,
-			profileID:  page.ProfileID,
-			data:       page.Data,
-		})
-	}
-	return result, converted, nil
+	return result, pages, nil
 }

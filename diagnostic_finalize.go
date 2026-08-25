@@ -115,13 +115,13 @@ func newDiagnostics(platform string, scopes []string) diagnostics {
 
 func finalizeDiagnostics(diag *diagnostics, targets databaseTargets, result response, options acquireOptions) {
 	applyPlatformDiagnosticDefaults(diag)
-	diag.DatabaseCount = len(targets.catalog.Databases)
-	diag.RequiredDatabaseCount = targets.count
+	diag.DatabaseCount = len(targets.Catalog.Databases)
+	diag.RequiredDatabaseCount = targets.Count
 	diag.PlaintextDatabaseCount = 0
 	diag.UnreadableDatabaseCount = 0
 	diag.UnstableDatabaseCount = 0
 	diag.TruncatedDatabaseCount = 0
-	for _, database := range targets.catalog.Databases {
+	for _, database := range targets.Catalog.Databases {
 		switch database.Classification {
 		case classificationPlaintext:
 			diag.PlaintextDatabaseCount++
@@ -200,7 +200,7 @@ func finalizeDiagnostics(diag *diagnostics, targets databaseTargets, result resp
 		// An empty target set is not successful database coverage. Plaintext-only
 		// catalogs remain complete because they contain proven catalog entries even
 		// though required_database_count is zero.
-		databaseComplete = diag.DatabaseCount > 0 && diag.MissingDatabaseCount == 0 && len(targets.catalog.DiscoveryErrors) == 0
+		databaseComplete = diag.DatabaseCount > 0 && diag.MissingDatabaseCount == 0 && len(targets.Catalog.DiscoveryErrors) == 0
 		switch {
 		case databaseComplete:
 			diag.DatabaseCoverageStatus = "complete"

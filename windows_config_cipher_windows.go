@@ -217,11 +217,11 @@ func scanWindowsConfigCipherProcess(handle syscall.Handle, process windowsProces
 		accepted := false
 		switch recipe.CandidateKind {
 		case "raw_enc_key":
-			accepted = collector.considerCapturedDatabaseKeyFrom(candidate, "windows_config_cipher")
+			accepted = collector.ConsiderCapturedDatabaseKeyFrom(candidate, "windows_config_cipher")
 		case "passphrase":
 			// A fixed memory layout is not complete KDF call evidence. It may be
 			// used to derive current effective keys, but cannot promote a root.
-			accepted = collector.recordGlobalPassphrase(candidate, "windows_config_cipher", false)
+			accepted = collector.RecordGlobalPassphrase(candidate, "windows_config_cipher", false)
 		}
 		zeroBytes(candidate)
 		if accepted {
@@ -233,7 +233,7 @@ func scanWindowsConfigCipherProcess(handle syscall.Handle, process windowsProces
 		attempt.Status = windowsConfigCipherInvalidStructure
 	case attempt.VerifiedCandidates == 0:
 		attempt.Status = windowsConfigCipherNoVerifiedCandidate
-	case collector.hasAllDatabaseCandidates():
+	case collector.HasAllDatabaseCandidates():
 		attempt.Status = windowsConfigCipherSucceeded
 	default:
 		attempt.Status = windowsConfigCipherPartial

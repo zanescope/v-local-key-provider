@@ -372,8 +372,8 @@ func darwinPBKDFCaptureMatchesTargetSalt(capture darwinPBKDFCapture, targets dat
 	if len(capture.Salt) != 16 {
 		return false
 	}
-	for _, target := range targets.pages {
-		salt, err := hex.DecodeString(target.salt)
+	for _, target := range targets.Pages {
+		salt, err := hex.DecodeString(target.Salt)
 		if err == nil && bytes.Equal(salt, capture.Salt) {
 			return true
 		}
@@ -384,7 +384,7 @@ func darwinPBKDFCaptureMatchesTargetSalt(capture darwinPBKDFCapture, targets dat
 func consumeDarwinHookCaptures(output string, collector *candidateCollector) int {
 	captures := 0
 	for _, candidate := range parseDarwinHookPythonKeys(output) {
-		if collector.considerCapturedDatabaseKey(candidate) {
+		if collector.ConsiderCapturedDatabaseKey(candidate) {
 			captures++
 		}
 		zeroBytes(candidate)
@@ -393,30 +393,10 @@ func consumeDarwinHookCaptures(output string, collector *candidateCollector) int
 		accepted := false
 		switch {
 		case capture.Algorithm == 2 && capture.PRF == 5 && capture.Rounds == v4KDFIterations &&
-			capture.OutputLength == 32 && len(capture.Password) == 32 && darwinPBKDFCaptureMatchesTargetSalt(capture, collector.targets):
-			accepted = collector.considerGlobalPassphrase(capture.Password)
+			capture.OutputLength == 32 && len(capture.Password) == 32 && collector.TargetSaltMatches(capture.Salt):
+			accepted = collector.ConsiderGlobalPassphrase(capture.Password)
 		case capture.Algorithm == 2 && capture.PRF == 5 && capture.Rounds == 2 && capture.OutputLength == 32 && len(capture.Password) == 32:
-			for _, target := range collector.targets.pages {
-				fileSalt, err := hex.DecodeString(target.salt)
-				if err != nil || len(fileSalt) != len(capture.Salt) {
-					continue
-				}
-				matchedSalt := true
-				for index := range fileSalt {
-					if fileSalt[index]^0x3a != capture.Salt[index] {
-						matchedSalt = false
-						break
-					}
-				}
-				if !matchedSalt {
-					continue
-				}
-				verification, valid := verifyRawDatabaseKey(capture.Password, target.data, nil)
-				if valid {
-					accepted = true
-					collector.addDatabaseCandidate(target.path, verification.KeyHex, verification.ProfileID, "raw_enc_key")
-				}
-			}
+			accepted = collector.ConsiderCapturedHMACKey(capture.Password, capture.Salt, "raw_enc_key")
 		}
 		if accepted {
 			captures++
@@ -722,7 +702,7 @@ func (hook *darwinPersistentHook) close() {
 }
 
 func preparePlatformAcquisitionSession(targets databaseTargets, options acquireOptions) acquisitionPlatformSession {
-	if !options.database || len(targets.pages) == 0 || options.budget.expired() {
+	if !options.database || len(targets.Pages) == 0 || options.budget.expired() {
 		return nil
 	}
 	processes, _, err := darwinTargetProcesses()
@@ -775,22 +755,22 @@ func preparePlatformAcquisitionSession(targets databaseTargets, options acquireO
 				values = append(values, hook.status(nil))
 				continue
 			}
-			isolated := newCandidateCollector(collector.targets, mediaEvidence{v2Blocks: collector.mediaBlocks}, collector.validationBudget)
+			isolated := collector.NewIsolated()
 			values = append(values, hook.status(isolated))
-			collector.mergeValidatedFrom(isolated)
-			isolated.clearSensitiveBuffers()
+			collector.MergeValidatedFrom(isolated)
+			isolated.ClearSensitiveBuffers()
 		}
 		return mergePlatformHookSnapshots(values...)
 	}
-	return &synchronizedPlatformSession{
-		collectFn: func(collector *candidateCollector) platformHookSnapshot { return status(collector) },
-		statusFn:  func() platformHookSnapshot { return status(nil) },
-		closeFn: func() {
+	return newSynchronizedPlatformSession(
+		func(collector *candidateCollector) platformHookSnapshot { return status(collector) },
+		func() platformHookSnapshot { return status(nil) },
+		func() {
 			for _, hook := range hooks {
 				hook.close()
 			}
 		},
-	}
+	)
 }
 
 func darwinResumeAfterHook(pid int) {

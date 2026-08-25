@@ -1,4 +1,4 @@
-package provider
+package acquisition
 
 import (
 	"bytes"
@@ -13,9 +13,9 @@ func TestScanSaltNeighborhoodRecoversAdjacentRawKey(t *testing.T) {
 	salt := strings.Repeat("ab", 16)
 	key := strings.Repeat("12", 32)
 	targets := databaseTargets{
-		bySalt: map[string][]string{salt: {"contact/contact.db"}},
-		pages:  []databasePage{encryptedDatabasePageAt(t, key, salt, "contact/contact.db")},
-		count:  1,
+		BySalt: map[string][]string{salt: {"contact/contact.db"}},
+		Pages:  []databasePage{encryptedDatabasePageAt(t, key, salt, "contact/contact.db")},
+		Count:  1,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})
 
@@ -28,9 +28,9 @@ func TestScanSaltNeighborhoodRecoversAdjacentRawKey(t *testing.T) {
 	buffer = append(buffer, keyBin...)
 	buffer = append(buffer, bytes.Repeat([]byte{0x77}, 64)...)
 
-	collector.scanSaltNeighborhood(buffer)
+	collector.ScanSaltNeighborhood(buffer)
 
-	keys, ambiguous := collector.databaseKeys(targets)
+	keys, ambiguous := collector.DatabaseKeys(targets)
 	if ambiguous != 0 || keys["contact/contact.db"] != key {
 		t.Fatalf("盐值邻域未能恢复密钥：keys=%v ambiguous=%d", keys, ambiguous)
 	}
@@ -41,9 +41,9 @@ func TestScanSaltNeighborhoodIgnoresDistantKey(t *testing.T) {
 	salt := strings.Repeat("cd", 16)
 	key := strings.Repeat("34", 32)
 	targets := databaseTargets{
-		bySalt: map[string][]string{salt: {"far.db"}},
-		pages:  []databasePage{encryptedDatabasePageAt(t, key, salt, "far.db")},
-		count:  1,
+		BySalt: map[string][]string{salt: {"far.db"}},
+		Pages:  []databasePage{encryptedDatabasePageAt(t, key, salt, "far.db")},
+		Count:  1,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})
 
@@ -54,9 +54,9 @@ func TestScanSaltNeighborhoodIgnoresDistantKey(t *testing.T) {
 	buffer = append(buffer, bytes.Repeat([]byte{0x33}, saltNeighborhoodWindow+64)...)
 	buffer = append(buffer, keyBin...)
 
-	collector.scanSaltNeighborhood(buffer)
+	collector.ScanSaltNeighborhood(buffer)
 
-	if keys, _ := collector.databaseKeys(targets); len(keys) != 0 {
+	if keys, _ := collector.DatabaseKeys(targets); len(keys) != 0 {
 		t.Fatalf("窗口外的密钥不应被命中：keys=%v", keys)
 	}
 }

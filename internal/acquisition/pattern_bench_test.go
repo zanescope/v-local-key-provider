@@ -1,4 +1,4 @@
-package provider
+package acquisition
 
 import (
 	"crypto/rand"
@@ -18,32 +18,32 @@ func benchRandom(n int) []byte {
 
 func BenchmarkCollectorScan(b *testing.B) {
 	data := benchRandom(1 << 20)
-	collector := newCandidateCollector(databaseTargets{bySalt: map[string][]string{}}, mediaEvidence{})
+	collector := newCandidateCollector(databaseTargets{BySalt: map[string][]string{}}, mediaEvidence{})
 	b.SetBytes(int64(len(data)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		collector.scan(data)
+		collector.Scan(data)
 	}
 }
 
 func BenchmarkScanInternalXORKeys(b *testing.B) {
 	data := benchRandom(1 << 20)
-	collector := newCandidateCollector(databaseTargets{bySalt: map[string][]string{}}, mediaEvidence{})
+	collector := newCandidateCollector(databaseTargets{BySalt: map[string][]string{}}, mediaEvidence{})
 	b.SetBytes(int64(len(data)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		collector.scanInternalXORKeys(data)
+		collector.ScanInternalXORKeys(data)
 	}
 }
 
 func BenchmarkScanSaltNeighborhood(b *testing.B) {
 	data := benchRandom(1 << 20)
 	salt := strings.Repeat("ab", 16) // 不在随机数据里 → 每块每盐一次全缓冲 bytes.Index（最坏）
-	collector := newCandidateCollector(databaseTargets{bySalt: map[string][]string{salt: {"x.db"}}}, mediaEvidence{})
+	collector := newCandidateCollector(databaseTargets{BySalt: map[string][]string{salt: {"x.db"}}}, mediaEvidence{})
 	b.SetBytes(int64(len(data)))
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		collector.scanSaltNeighborhood(data)
+		collector.ScanSaltNeighborhood(data)
 	}
 }
 

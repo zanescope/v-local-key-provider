@@ -227,19 +227,19 @@ func scanDarwinProcess(task C.mach_port_t, collector *candidateCollector, limit 
 					combined := make([]byte, 0, len(tail)+read)
 					combined = append(combined, tail...)
 					combined = append(combined, buffer[:read]...)
-					collector.scan(combined)
+					collector.Scan(combined)
 					// 指令形态的 XOR 兜底在映像和堆区域同样有用，
 					// 因此对所有可读页都保持启用。
-					collector.scanInternalXORKeys(combined)
+					collector.ScanInternalXORKeys(combined)
 					if allowKeyObjects {
-						collector.collectKeyObjects(combined, seenPointers, func(pointer uint64, buffer []byte) int {
+						collector.CollectKeyObjects(combined, seenPointers, func(pointer uint64, buffer []byte) int {
 							if read, ok := darwinRead(task, pointer, buffer); ok {
 								return read
 							}
 							return 0
 						})
 					}
-					collector.scanSaltNeighborhood(combined)
+					collector.ScanSaltNeighborhood(combined)
 					keep := scanTailLength
 					if len(combined) < keep {
 						keep = len(combined)
@@ -304,11 +304,11 @@ type darwinAcquisitionPipeline struct {
 }
 
 func (pipeline *darwinAcquisitionPipeline) databaseSatisfied() bool {
-	return !pipeline.needDatabaseScan || pipeline.collector.hasAllDatabaseCandidates()
+	return !pipeline.needDatabaseScan || pipeline.collector.HasAllDatabaseCandidates()
 }
 
 func (pipeline *darwinAcquisitionPipeline) mediaSatisfied() bool {
-	return !pipeline.needMediaScan || pipeline.collector.resolvedMedia(pipeline.scanMedia) != nil
+	return !pipeline.needMediaScan || pipeline.collector.ResolvedMedia(pipeline.scanMedia) != nil
 }
 
 func (pipeline *darwinAcquisitionPipeline) satisfied() bool {
@@ -352,15 +352,15 @@ func (pipeline *darwinAcquisitionPipeline) tryDynamicHook(waitFor bool) {
 		hook := captureDarwinHookMode(
 			process, isolated, pipeline.options.budget, waitFor, pipeline.diag.SecurityPostureStatus,
 		)
-		pipeline.collector.mergeValidatedFrom(isolated)
-		isolated.clearSensitiveBuffers()
+		pipeline.collector.MergeValidatedFrom(isolated)
+		isolated.ClearSensitiveBuffers()
 		recordDarwinHookDiagnostics(&pipeline.diag, hook)
 	}
 }
 
 func (pipeline *darwinAcquisitionPipeline) runHookStage() {
 	if pipeline.persistentHook {
-		recordDarwinHookDiagnostics(&pipeline.diag, pipeline.options.platformSession.collect(pipeline.collector))
+		recordDarwinHookDiagnostics(&pipeline.diag, pipeline.options.platformSession.Collect(pipeline.collector))
 	}
 	pipeline.deferFallback = pipeline.persistentHook && !pipeline.satisfied() &&
 		pipeline.options.actionReceipt != "restart_wechat" && pipeline.options.actionReceipt != "relogin_wechat"
@@ -445,11 +445,11 @@ func (pipeline *darwinAcquisitionPipeline) runStaticScanStage() {
 		isolated := newCandidateCollector(pipeline.targets, pipeline.scanMedia, pipeline.options.budget)
 		scanned, limited := scanDarwinProcess(task, isolated, remaining, true, pipeline.options.budget)
 		darwinCloseTask(task)
-		if pipeline.needDatabaseScan && !isolated.hasAllDatabaseCandidates() {
-			isolated.resolveDatabasePassphrase(pipeline.options.budget)
+		if pipeline.needDatabaseScan && !isolated.HasAllDatabaseCandidates() {
+			isolated.ResolveDatabasePassphrase(pipeline.options.budget.value)
 		}
-		pipeline.collector.mergeValidatedFrom(isolated)
-		isolated.clearSensitiveBuffers()
+		pipeline.collector.MergeValidatedFrom(isolated)
+		isolated.ClearSensitiveBuffers()
 		pipeline.diag.ScannedBytes += scanned
 		pipeline.diag.ScanLimited = pipeline.diag.ScanLimited || limited
 	}
@@ -491,9 +491,9 @@ func (pipeline *darwinAcquisitionPipeline) finalizeProcessAccessStatus() {
 func (pipeline *darwinAcquisitionPipeline) assemble() (response, diagnostics, error) {
 	pipeline.finalizeProcessAccessStatus()
 	if pipeline.needDatabaseScan && !pipeline.databaseSatisfied() {
-		pipeline.collector.resolveDatabasePassphrase(pipeline.options.budget)
+		pipeline.collector.ResolveDatabasePassphrase(pipeline.options.budget.value)
 	}
-	keys, ambiguous := pipeline.collector.databaseKeys(pipeline.targets)
+	keys, ambiguous := pipeline.collector.DatabaseKeys(pipeline.targets)
 	if pipeline.options.database && len(keys) == 0 && pipeline.options.actionReceipt == "restart_wechat" &&
 		pipeline.diag.HookInstalled && !pipeline.diag.DynamicHookUsed {
 		pipeline.diag.HookReloginRequired = true
@@ -516,15 +516,15 @@ func (pipeline *darwinAcquisitionPipeline) assemble() (response, diagnostics, er
 		pipeline.diag.HookRestartRequired = false
 		pipeline.diag.HookReloginRequired = false
 	}
-	imageCandidate := pipeline.collector.applyScanDiagnostics(
+	imageCandidate := pipeline.collector.ApplyScanDiagnostics(
 		&pipeline.diag, keys, ambiguous, pipeline.derivedMedia, pipeline.scanMedia,
 	)
-	credential, err := pipeline.collector.databaseCredential(keys, pipeline.targets)
+	credential, err := pipeline.collector.DatabaseCredential(keys, pipeline.targets)
 	if err != nil {
 		return response{}, pipeline.diag, err
 	}
 	return response{
-		DatabaseKeys: keys, DatabaseProfiles: pipeline.collector.profilesForKeys(keys),
+		DatabaseKeys: keys, DatabaseProfiles: pipeline.collector.ProfilesForKeys(keys),
 		DatabaseCredential: credential, ImageKeys: imageCandidate,
 	}, pipeline.diag, nil
 }
@@ -536,15 +536,15 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 	}
 	diag := newDiagnostics("darwin", requestedScopes(options.database, options.media))
 	diag.HelperStatus = helperStatus
-	diag.DatabaseCount = targets.count
-	diag.V2SampleCount = len(media.v2Blocks)
-	diag.XORDistinctCandidateCount = len(media.xorCandidates)
+	diag.DatabaseCount = targets.Count
+	diag.V2SampleCount = len(media.V2Blocks)
+	diag.XORDistinctCandidateCount = len(media.XORCandidates)
 	if options.helperStatus == "untrusted" {
 		diag.ProcessAccessStatus = "denied"
 		diag.ProcessAccessError = "helper_untrusted"
 		return response{}, diag, nil
 	}
-	for _, count := range media.xorCandidates {
+	for _, count := range media.XORCandidates {
 		diag.XORSampleCount += count
 	}
 	selectedMedia, xorResolved, leading, second := selectDominantXOR(media)
@@ -553,8 +553,8 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 	derivedMedia, codeCandidates, verifiedCodes := resolveKVCommMedia(options.accountDir, selectedMedia)
 	diag.KVCommCodeCandidateCount = codeCandidates
 	diag.KVCommVerifiedCandidateCount = verifiedCodes
-	needDatabaseScan := options.database && len(targets.bySalt) > 0
-	needMediaScan := options.media && derivedMedia == nil && len(media.v2Blocks) > 0 && xorResolved
+	needDatabaseScan := options.database && len(targets.BySalt) > 0
+	needMediaScan := options.media && derivedMedia == nil && len(media.V2Blocks) > 0 && xorResolved
 	if !needDatabaseScan && !needMediaScan && derivedMedia == nil {
 		diag.ProcessAccessStatus = "not_needed"
 		return response{}, diag, nil
@@ -596,7 +596,7 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 	diag.VersionSupport = darwinVersionSupport(diag.WeChatVersion)
 	scanMedia := selectedMedia
 	if !needMediaScan {
-		scanMedia = mediaEvidence{xorCandidates: map[byte]int{}}
+		scanMedia = mediaEvidence{XORCandidates: map[byte]int{}}
 	}
 	collector := newCandidateCollector(targets, scanMedia, options.budget)
 	pipeline := &darwinAcquisitionPipeline{
@@ -605,7 +605,7 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 		derivedMedia: derivedMedia, needDatabaseScan: needDatabaseScan, needMediaScan: needMediaScan,
 		persistentHook: options.platformSession != nil,
 	}
-	defer pipeline.collector.clearSensitiveBuffers()
+	defer pipeline.collector.ClearSensitiveBuffers()
 	pipeline.runHookStage()
 	pipeline.refreshProcessStage()
 	pipeline.runStaticScanStage()

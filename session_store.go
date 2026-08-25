@@ -24,7 +24,7 @@ func newAcquisitionSessionStore() *acquisitionSessionStore {
 		ClearSecret: zeroBytes,
 		ClosePlatform: func(value any) {
 			if session, ok := value.(acquisitionPlatformSession); ok && session != nil {
-				session.close()
+				session.Close()
 			}
 		},
 	})}
@@ -70,7 +70,7 @@ func (store *acquisitionSessionStore) prepare(request acquireRequest) (response,
 	defer zeroBytes(options.catalogKey)
 	options.helperMode = store.helperMode
 	options.helperStatus = store.helperStatus
-	targets := databaseTargets{catalog: databaseCatalog{}}
+	targets := databaseTargets{Catalog: databaseCatalog{}}
 	discoveryStarted := time.Now()
 	if options.database {
 		targets, err = discoverDatabaseTargetsWithKey(options.dbDir, options.budget, options.catalogKey)
@@ -86,7 +86,7 @@ func (store *acquisitionSessionStore) prepare(request acquireRequest) (response,
 	processInstanceID := platformProcessInstanceID()
 	session := store.core.NewRecord(sessionmodel.RecordInput{
 		ID: id, AccountDir: options.accountDir, DBDir: options.dbDir,
-		CatalogKey: options.catalogKey, CatalogID: targets.catalog.CatalogID,
+		CatalogKey: options.catalogKey, CatalogID: targets.Catalog.CatalogID,
 		Scopes: request.Scopes, ProcessInstanceID: processInstanceID,
 		LastActionStage: "prepare", ClientIdentity: request.PeerIdentity,
 	})
@@ -99,10 +99,10 @@ func (store *acquisitionSessionStore) prepare(request acquireRequest) (response,
 	}
 	diag := newDiagnostics(platformNameForDiagnostics(), requestedScopes(options.database, options.media))
 	applyFixedDiagnosticOutcome(&diag, "partial", "running", "none")
-	diag.MissingDatabaseCount = targets.count
+	diag.MissingDatabaseCount = targets.Count
 	diag.MissingDatabaseIDs = missingDatabaseIDs(targets, nil)
-	diag.DatabaseCount = len(targets.catalog.Databases)
-	diag.RequiredDatabaseCount = targets.count
+	diag.DatabaseCount = len(targets.Catalog.Databases)
+	diag.RequiredDatabaseCount = targets.Count
 	diag.SessionID = id
 	diag.ProcessInstanceID = processInstanceID
 	diag.SessionExpiresAt = session.ExpiresAt.UTC().Format(time.RFC3339Nano)
@@ -113,12 +113,12 @@ func (store *acquisitionSessionStore) prepare(request acquireRequest) (response,
 	}
 	if options.database {
 		diag.DatabaseTargetStatus = "none"
-		if len(targets.catalog.Databases) > 0 {
+		if len(targets.Catalog.Databases) > 0 {
 			diag.DatabaseTargetStatus = "present"
 		}
 		diag.DatabaseCoverageStatus = "none"
 	}
-	for _, database := range targets.catalog.Databases {
+	for _, database := range targets.Catalog.Databases {
 		switch database.Classification {
 		case classificationPlaintext:
 			diag.PlaintextDatabaseCount++
@@ -134,7 +134,7 @@ func (store *acquisitionSessionStore) prepare(request acquireRequest) (response,
 		diag.MediaCoverageStatus = "pending"
 	}
 	if platformSession, ok := session.PlatformSession.(acquisitionPlatformSession); ok && platformSession != nil {
-		hook := platformSession.status()
+		hook := platformSession.Status()
 		diag.HookTargetFound = hook.TargetFound
 		diag.HookInstalled = hook.Installed
 		diag.RouteSelected = hook.Route
@@ -146,8 +146,8 @@ func (store *acquisitionSessionStore) prepare(request acquireRequest) (response,
 	}
 	applyPlatformDiagnosticDefaults(&diag)
 	return response{
-		Protocol: protocolName, RequestID: request.RequestID, CatalogID: targets.catalog.CatalogID,
-		CatalogEntries: append([]catalogDatabase(nil), targets.catalog.Databases...),
+		Protocol: protocolName, RequestID: request.RequestID, CatalogID: targets.Catalog.CatalogID,
+		CatalogEntries: append([]catalogDatabase(nil), targets.Catalog.Databases...),
 		Profiles:       profileSummaries(), Diagnostics: diag,
 	}, nil
 }

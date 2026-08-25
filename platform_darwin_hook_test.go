@@ -61,7 +61,7 @@ func TestDarwinHookPythonSourceCountsOnlyResolvedBreakpoints(t *testing.T) {
 
 func TestDarwinPassphraseCaptureRequiresCompleteKDFEvidenceAndTargetSalt(t *testing.T) {
 	salt := strings.Repeat("ab", 16)
-	targets := databaseTargets{pages: []databasePage{{salt: salt}}}
+	targets := databaseTargets{Pages: []databasePage{{Salt: salt}}}
 	valid := darwinPBKDFCapture{Algorithm: 2, PRF: 5, Rounds: v4KDFIterations, OutputLength: 32, Password: make([]byte, 32)}
 	valid.Salt = make([]byte, 16)
 	for index := range valid.Salt {
@@ -82,9 +82,9 @@ func TestPhase3DarwinRoundsTwoPBKDFCaptureMapsRawKeyUsingXORSalt(t *testing.T) {
 	keyHex := strings.Repeat("37", 32)
 	saltHex := strings.Repeat("a4", 16)
 	page := encryptedDatabasePage(t, keyHex, saltHex)
-	page.path = "message.db"
+	page.Path = "message.db"
 	targets := databaseTargets{
-		bySalt: map[string][]string{saltHex: {page.path}}, pages: []databasePage{page}, count: 1,
+		BySalt: map[string][]string{saltHex: {page.Path}}, Pages: []databasePage{page}, Count: 1,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})
 	salt, err := hex.DecodeString(saltHex)
@@ -98,14 +98,14 @@ func TestPhase3DarwinRoundsTwoPBKDFCaptureMapsRawKeyUsingXORSalt(t *testing.T) {
 	if captures := consumeDarwinHookCaptures(output, collector); captures != 1 {
 		t.Fatalf("capture count = %d, want 1", captures)
 	}
-	keys, ambiguous := collector.databaseKeys(targets)
-	if ambiguous != 0 || keys[page.path] != keyHex {
+	keys, ambiguous := collector.DatabaseKeys(targets)
+	if ambiguous != 0 || keys[page.Path] != keyHex {
 		t.Fatalf("rounds=2 PBKDF evidence was not mapped to the raw database key: keys=%v ambiguous=%d", keys, ambiguous)
 	}
 }
 
 func TestPhase3DarwinUnrelatedPBKDFCaptureIsNotCountedAsUsed(t *testing.T) {
-	targets := databaseTargets{pages: []databasePage{{salt: strings.Repeat("ab", 16)}}}
+	targets := databaseTargets{Pages: []databasePage{{Salt: strings.Repeat("ab", 16)}}}
 	collector := newCandidateCollector(targets, mediaEvidence{})
 	output := "VLOCALPBKDF=2,3,1,4,16,01020304,aabbccdd\n"
 	if captures := consumeDarwinHookCaptures(output, collector); captures != 0 {

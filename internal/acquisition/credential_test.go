@@ -1,4 +1,4 @@
-package provider
+package acquisition
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 func TestDatabaseCredentialSeparatesGlobalRootAndOverrides(t *testing.T) {
 	globalKey := strings.Repeat("11", 32)
 	overrideKey := strings.Repeat("22", 32)
-	targets := databaseTargets{catalog: databaseCatalog{CatalogID: "catalog-1", Databases: []catalogDatabase{
+	targets := databaseTargets{Catalog: databaseCatalog{CatalogID: "catalog-1", Databases: []catalogDatabase{
 		{DatabaseID: "db-global", RelativePath: "message.db", Salt: strings.Repeat("a", 32), RequiredForKeyCoverage: true},
 		{DatabaseID: "db-global-2", RelativePath: "message_1.db", Salt: strings.Repeat("b", 32), RequiredForKeyCoverage: true},
 		{DatabaseID: "db-override", RelativePath: "contact.db", RequiredForKeyCoverage: true},
@@ -40,7 +40,7 @@ func TestDatabaseCredentialSeparatesGlobalRootAndOverrides(t *testing.T) {
 
 func TestDatabaseCredentialDoesNotPromoteSingleSaltPassphraseToAccountRoot(t *testing.T) {
 	effectiveKey := strings.Repeat("33", 32)
-	targets := databaseTargets{catalog: databaseCatalog{CatalogID: "catalog-single", Databases: []catalogDatabase{{
+	targets := databaseTargets{Catalog: databaseCatalog{CatalogID: "catalog-single", Databases: []catalogDatabase{{
 		DatabaseID: "db-single", RelativePath: "message.db", Salt: strings.Repeat("c", 32), RequiredForKeyCoverage: true,
 	}}}}
 	collector := newCandidateCollector(targets, mediaEvidence{})
@@ -64,7 +64,7 @@ func TestDatabaseCredentialDoesNotPromoteSingleSaltPassphraseToAccountRoot(t *te
 func TestDatabaseCredentialDoesNotCombineDifferentPassphrasesIntoGlobalProof(t *testing.T) {
 	firstKey := strings.Repeat("44", 32)
 	secondKey := strings.Repeat("55", 32)
-	targets := databaseTargets{catalog: databaseCatalog{CatalogID: "catalog-split", Databases: []catalogDatabase{
+	targets := databaseTargets{Catalog: databaseCatalog{CatalogID: "catalog-split", Databases: []catalogDatabase{
 		{DatabaseID: "db-first", RelativePath: "first.db", Salt: strings.Repeat("d", 32), RequiredForKeyCoverage: true},
 		{DatabaseID: "db-second", RelativePath: "second.db", Salt: strings.Repeat("e", 32), RequiredForKeyCoverage: true},
 	}}}
@@ -93,22 +93,22 @@ func TestDatabaseCredentialDoesNotCombineDifferentPassphrasesIntoGlobalProof(t *
 func TestPassphraseEvidenceStaysBoundAcrossTwoSalts(t *testing.T) {
 	passphraseHex := strings.Repeat("7b", 32)
 	first := encryptedV4PassphrasePage(t, passphraseHex, strings.Repeat("1a", 16))
-	first.path = "first.db"
+	first.Path = "first.db"
 	second := encryptedV4PassphrasePage(t, passphraseHex, strings.Repeat("2b", 16))
-	second.path = "second.db"
+	second.Path = "second.db"
 	targets := databaseTargets{
-		catalog: databaseCatalog{CatalogID: "catalog-passphrase", Databases: []catalogDatabase{
-			{DatabaseID: "db-first", RelativePath: first.path, Salt: first.salt, RequiredForKeyCoverage: true},
-			{DatabaseID: "db-second", RelativePath: second.path, Salt: second.salt, RequiredForKeyCoverage: true},
+		Catalog: databaseCatalog{CatalogID: "catalog-passphrase", Databases: []catalogDatabase{
+			{DatabaseID: "db-first", RelativePath: first.Path, Salt: first.Salt, RequiredForKeyCoverage: true},
+			{DatabaseID: "db-second", RelativePath: second.Path, Salt: second.Salt, RequiredForKeyCoverage: true},
 		}},
-		pages: []databasePage{first, second}, count: 2,
+		Pages: []databasePage{first, second}, Count: 2,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})
 	passphrase, _ := hex.DecodeString(passphraseHex)
-	if !collector.considerGlobalPassphrase(passphrase) {
+	if !collector.ConsiderGlobalPassphrase(passphrase) {
 		t.Fatal("valid passphrase did not record per-database evidence")
 	}
-	keys, ambiguous := collector.databaseKeys(targets)
+	keys, ambiguous := collector.DatabaseKeys(targets)
 	credential, err := collector.databaseCredential(keys, targets)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestPassphraseEvidenceStaysBoundAcrossTwoSalts(t *testing.T) {
 func TestMultiSaltProbeWithoutKDFCallEvidenceStaysPerDatabase(t *testing.T) {
 	firstKey := strings.Repeat("66", 32)
 	secondKey := strings.Repeat("77", 32)
-	targets := databaseTargets{catalog: databaseCatalog{CatalogID: "catalog-probe", Databases: []catalogDatabase{
+	targets := databaseTargets{Catalog: databaseCatalog{CatalogID: "catalog-probe", Databases: []catalogDatabase{
 		{DatabaseID: "db-first", RelativePath: "first.db", Salt: strings.Repeat("3c", 16), RequiredForKeyCoverage: true},
 		{DatabaseID: "db-second", RelativePath: "second.db", Salt: strings.Repeat("4d", 16), RequiredForKeyCoverage: true},
 	}}}
@@ -146,15 +146,15 @@ func TestMultiSaltProbeWithoutKDFCallEvidenceStaysPerDatabase(t *testing.T) {
 func TestPhase4ConfigCipherPassphraseCannotBecomeAccountRoot(t *testing.T) {
 	passphraseHex := strings.Repeat("7b", 32)
 	first := encryptedV4PassphrasePage(t, passphraseHex, strings.Repeat("1c", 16))
-	first.path = "first.db"
+	first.Path = "first.db"
 	second := encryptedV4PassphrasePage(t, passphraseHex, strings.Repeat("2d", 16))
-	second.path = "second.db"
+	second.Path = "second.db"
 	targets := databaseTargets{
-		catalog: databaseCatalog{CatalogID: "phase4-config-cipher", Databases: []catalogDatabase{
-			{DatabaseID: "db-first", RelativePath: first.path, Salt: first.salt, RequiredForKeyCoverage: true},
-			{DatabaseID: "db-second", RelativePath: second.path, Salt: second.salt, RequiredForKeyCoverage: true},
+		Catalog: databaseCatalog{CatalogID: "phase4-config-cipher", Databases: []catalogDatabase{
+			{DatabaseID: "db-first", RelativePath: first.Path, Salt: first.Salt, RequiredForKeyCoverage: true},
+			{DatabaseID: "db-second", RelativePath: second.Path, Salt: second.Salt, RequiredForKeyCoverage: true},
 		}},
-		pages: []databasePage{first, second}, count: 2,
+		Pages: []databasePage{first, second}, Count: 2,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})
 	collector.processInstanceID = "windows-process:" + strings.Repeat("e", 64)
@@ -162,10 +162,10 @@ func TestPhase4ConfigCipherPassphraseCannotBecomeAccountRoot(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !collector.recordGlobalPassphrase(passphrase, "windows_config_cipher", false) {
+	if !collector.RecordGlobalPassphrase(passphrase, "windows_config_cipher", false) {
 		t.Fatal("Config.Cipher fixture passphrase did not validate current catalog pages")
 	}
-	keys, ambiguous := collector.databaseKeys(targets)
+	keys, ambiguous := collector.DatabaseKeys(targets)
 	credential, err := collector.databaseCredential(keys, targets)
 	if err != nil {
 		t.Fatal(err)
@@ -189,7 +189,7 @@ func TestPhase4ConfigCipherPassphraseCannotBecomeAccountRoot(t *testing.T) {
 }
 
 func TestGlobalRootRequiresTwoSaltsWithinTheSameProfile(t *testing.T) {
-	targets := databaseTargets{catalog: databaseCatalog{CatalogID: "catalog-profiles", Databases: []catalogDatabase{
+	targets := databaseTargets{Catalog: databaseCatalog{CatalogID: "catalog-profiles", Databases: []catalogDatabase{
 		{DatabaseID: "db-a", RelativePath: "a.db", Salt: strings.Repeat("a", 32), RequiredForKeyCoverage: true},
 		{DatabaseID: "db-b", RelativePath: "b.db", Salt: strings.Repeat("b", 32), RequiredForKeyCoverage: true},
 	}}}

@@ -268,3 +268,7 @@ func validSQLitePageHeaderForPageSize(plain []byte, expectedPageSize, reserve, o
 	}
 	return validPageSize && int(plain[4]) == reserve && plain[5] == 64 && plain[6] == 32 && plain[7] == 32
 }
+
+func validSQLitePageHeader(plain []byte, reserve, offset int) bool {
+	return validSQLitePageHeaderForPageSize(plain, 0, reserve, offset)
+}

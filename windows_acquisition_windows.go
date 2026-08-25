@@ -13,15 +13,15 @@ func windowsTargetsForProfiles(targets databaseTargets, profiles []string) datab
 		allowedProfiles[profile] = true
 	}
 	allowedPaths := map[string]bool{}
-	pages := make([]databasePage, 0, len(targets.pages))
-	for _, page := range targets.pages {
-		if page.profileID == "" && len(allowedProfiles) > 0 || allowedProfiles[page.profileID] {
-			allowedPaths[page.path] = true
+	pages := make([]databasePage, 0, len(targets.Pages))
+	for _, page := range targets.Pages {
+		if page.ProfileID == "" && len(allowedProfiles) > 0 || allowedProfiles[page.ProfileID] {
+			allowedPaths[page.Path] = true
 			pages = append(pages, page)
 		}
 	}
-	subset := databaseCatalog{CatalogID: targets.catalog.CatalogID, DiscoveryErrors: append([]string(nil), targets.catalog.DiscoveryErrors...)}
-	for _, database := range targets.catalog.Databases {
+	subset := databaseCatalog{CatalogID: targets.Catalog.CatalogID, DiscoveryErrors: append([]string(nil), targets.Catalog.DiscoveryErrors...)}
+	for _, database := range targets.Catalog.Databases {
 		if allowedPaths[database.RelativePath] {
 			subset.Databases = append(subset.Databases, database)
 		}
@@ -38,10 +38,10 @@ func chooseWindowsConfigStatus(current, next string) string {
 
 func platformAcquire(targets databaseTargets, media mediaEvidence, options acquireOptions) (response, diagnostics, error) {
 	diag := newDiagnostics("windows", requestedScopes(options.database, options.media))
-	diag.DatabaseCount = targets.count
-	diag.V2SampleCount = len(media.v2Blocks)
-	diag.XORDistinctCandidateCount = len(media.xorCandidates)
-	for _, count := range media.xorCandidates {
+	diag.DatabaseCount = targets.Count
+	diag.V2SampleCount = len(media.V2Blocks)
+	diag.XORDistinctCandidateCount = len(media.XORCandidates)
+	for _, count := range media.XORCandidates {
 		diag.XORSampleCount += count
 	}
 	selectedMedia, xorResolved, leading, second := selectDominantXOR(media)
@@ -50,8 +50,8 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 	derivedMedia, codeCandidates, verifiedCodes := resolveKVCommMedia(options.accountDir, selectedMedia)
 	diag.KVCommCodeCandidateCount = codeCandidates
 	diag.KVCommVerifiedCandidateCount = verifiedCodes
-	needDatabaseScan := options.database && len(targets.bySalt) > 0
-	needMediaScan := options.media && derivedMedia == nil && len(media.v2Blocks) > 0 && xorResolved
+	needDatabaseScan := options.database && len(targets.BySalt) > 0
+	needMediaScan := options.media && derivedMedia == nil && len(media.V2Blocks) > 0 && xorResolved
 	if !needDatabaseScan && !needMediaScan && derivedMedia == nil {
 		return response{}, diag, nil
 	}
@@ -61,7 +61,7 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 	}
 	scanMedia := selectedMedia
 	if !needMediaScan {
-		scanMedia = mediaEvidence{xorCandidates: map[byte]int{}}
+		scanMedia = mediaEvidence{XORCandidates: map[byte]int{}}
 	}
 
 	processes, err := targetProcesses()
@@ -196,7 +196,7 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 	}
 
 	aggregate := newCandidateCollector(targets, scanMedia, options.budget)
-	defer aggregate.clearSensitiveBuffers()
+	defer aggregate.ClearSensitiveBuffers()
 	configStarted := time.Now()
 	configAttempted := false
 	for _, process := range opened {
@@ -206,9 +206,9 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 			}
 			break
 		}
-		keys, _ := aggregate.databaseKeys(targets)
+		keys, _ := aggregate.DatabaseKeys(targets)
 		missing := missingOnlyTargets(targets, keys)
-		if missing.count == 0 {
+		if missing.Count == 0 {
 			break
 		}
 		if process.decision.ConfigCipherRouteStatus != windowsConfigCipherEligible || process.decision.EntryIndex < 0 ||
@@ -217,7 +217,7 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 		}
 		entry := windowsCompatibilityRegistry[process.decision.EntryIndex]
 		eligibleTargets := windowsTargetsForProfiles(missing, entry.ValidatedProfiles)
-		if eligibleTargets.count == 0 {
+		if eligibleTargets.Count == 0 {
 			diag.WindowsRouteEvidence = appendUniqueStrings(diag.WindowsRouteEvidence, "registered_profiles_do_not_cover_missing_catalog")
 			continue
 		}
@@ -225,7 +225,7 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 		diag.PerProcessCollectorCount++
 		configBudget := options.budget.cappedFor(10 * time.Second)
 		isolated := newCandidateCollector(eligibleTargets, mediaEvidence{}, configBudget)
-		isolated.processInstanceID = process.evidence.InstanceID
+		isolated.SetProcessInstanceID(process.evidence.InstanceID)
 		attempt := scanWindowsConfigCipherProcess(
 			process.handle, process.evidence, entry.Recipe, isolated, totalScanLimit-diag.ScannedBytes,
 			configBudget,
@@ -238,18 +238,18 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 			diag.CandidateSources = appendUniqueStrings(diag.CandidateSources, "windows_config_cipher")
 		}
 		diag.ScannedBytes += attempt.ScannedBytes
-		aggregate.mergeValidatedFrom(isolated)
+		aggregate.MergeValidatedFrom(isolated)
 		attemptStatus := attempt.Status
 		if attemptStatus == windowsConfigCipherSucceeded {
-			keysAfterAttempt, _ := aggregate.databaseKeys(targets)
-			if missingOnlyTargets(targets, keysAfterAttempt).count > 0 {
+			keysAfterAttempt, _ := aggregate.DatabaseKeys(targets)
+			if missingOnlyTargets(targets, keysAfterAttempt).Count > 0 {
 				// The registered recipe may intentionally cover only a subset of
 				// profiles. Success is reserved for the complete requested catalog.
 				attemptStatus = windowsConfigCipherPartial
 			}
 		}
 		diag.ConfigCipherRouteStatus = chooseWindowsConfigStatus(diag.ConfigCipherRouteStatus, attemptStatus)
-		isolated.clearSensitiveBuffers()
+		isolated.ClearSensitiveBuffers()
 	}
 	diag.PhaseTimingsMS = map[string]int64{"config_cipher": time.Since(configStarted).Milliseconds()}
 	if configAttempted {
@@ -270,40 +270,40 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 				break
 			}
 			processBudget := options.budget.cappedFor(stage.Window)
-			keys, _ := aggregate.databaseKeys(targets)
+			keys, _ := aggregate.DatabaseKeys(targets)
 			missing := missingOnlyTargets(targets, keys)
-			mediaResolved := !needMediaScan || derivedMedia != nil || aggregate.resolvedMedia(scanMedia) != nil
-			if missing.count == 0 && mediaResolved {
+			mediaResolved := !needMediaScan || derivedMedia != nil || aggregate.ResolvedMedia(scanMedia) != nil
+			if missing.Count == 0 && mediaResolved {
 				break
 			}
-			if missing.count == 0 && (stage.Name == "structured_key_object" || stage.Name == "salt_neighborhood") {
+			if missing.Count == 0 && (stage.Name == "structured_key_object" || stage.Name == "salt_neighborhood") {
 				continue
 			}
 			stageMedia := scanMedia
 			if mediaResolved {
-				stageMedia = mediaEvidence{xorCandidates: map[byte]int{}}
+				stageMedia = mediaEvidence{XORCandidates: map[byte]int{}}
 			}
 			isolated := newCandidateCollector(missing, stageMedia, processBudget)
-			isolated.processInstanceID = process.evidence.InstanceID
+			isolated.SetProcessInstanceID(process.evidence.InstanceID)
 			diag.PerProcessCollectorCount++
 			limit := stage.PerProcessLimit
 			if remaining := totalScanLimit - diag.ScannedBytes; limit > remaining {
 				limit = remaining
 			}
 			scanned, limited := scanProcessStage(process.handle, isolated, limit, true, stage.Name, processBudget)
-			if missing.count > 0 && !isolated.hasAllDatabaseCandidates() {
-				isolated.resolveDatabasePassphrase(processBudget)
+			if missing.Count > 0 && !isolated.HasAllDatabaseCandidates() {
+				isolated.ResolveDatabasePassphrase(processBudget.value)
 			}
-			diag.FallbackCandidateCount += len(isolated.seenDatabase) + isolated.candidateObservationCount
+			diag.FallbackCandidateCount += isolated.CandidateObservationCount()
 			diag.FallbackStageCounts[stage.Name]++
 			diag.ScannedBytes += scanned
 			diag.ScanLimited = diag.ScanLimited || limited
-			aggregate.mergeValidatedFrom(isolated)
-			isolated.clearSensitiveBuffers()
+			aggregate.MergeValidatedFrom(isolated)
+			isolated.ClearSensitiveBuffers()
 			fallbackAttempted = true
 		}
-		keys, _ := aggregate.databaseKeys(targets)
-		if missingOnlyTargets(targets, keys).count == 0 && (!needMediaScan || derivedMedia != nil || aggregate.resolvedMedia(scanMedia) != nil) {
+		keys, _ := aggregate.DatabaseKeys(targets)
+		if missingOnlyTargets(targets, keys).Count == 0 && (!needMediaScan || derivedMedia != nil || aggregate.ResolvedMedia(scanMedia) != nil) {
 			break
 		}
 	}
@@ -314,7 +314,7 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 		diag.RoutesAttempted = appendUniqueStrings(diag.RoutesAttempted, "windows_memory_fallback")
 	}
 
-	keys, ambiguous := aggregate.databaseKeys(targets)
+	keys, ambiguous := aggregate.DatabaseKeys(targets)
 	switch {
 	case diag.TargetBindingStatus == "mismatch":
 		diag.ProcessAccessStatus = "not_attempted_account_mismatch"
@@ -336,10 +336,10 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 	default:
 		diag.ProcessAccessStatus = "unavailable"
 	}
-	imageCandidate := aggregate.applyScanDiagnostics(&diag, keys, ambiguous, derivedMedia, scanMedia)
-	credential, err := aggregate.databaseCredential(keys, targets)
+	imageCandidate := aggregate.ApplyScanDiagnostics(&diag, keys, ambiguous, derivedMedia, scanMedia)
+	credential, err := aggregate.DatabaseCredential(keys, targets)
 	if err != nil {
 		return response{}, diag, err
 	}
-	return response{DatabaseKeys: keys, DatabaseProfiles: aggregate.profilesForKeys(keys), DatabaseCredential: credential, ImageKeys: imageCandidate}, diag, nil
+	return response{DatabaseKeys: keys, DatabaseProfiles: aggregate.ProfilesForKeys(keys), DatabaseCredential: credential, ImageKeys: imageCandidate}, diag, nil
 }

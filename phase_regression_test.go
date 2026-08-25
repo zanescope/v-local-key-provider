@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -45,36 +44,10 @@ func TestPhase0CatalogProofChangesWhenPhysicalFileChanges(t *testing.T) {
 	}
 }
 
-func TestPhase0SameEffectiveKeyFromMultipleSourcesIsDeduplicated(t *testing.T) {
-	targets := databaseTargets{
-		pages: []databasePage{{path: "message.db", profileID: defaultProfileID}},
-		count: 1,
-		catalog: databaseCatalog{Databases: []catalogDatabase{{
-			DatabaseID: "db", RelativePath: "message.db", RequiredForKeyCoverage: true,
-		}}},
-	}
-	collector := newCandidateCollector(targets, mediaEvidence{})
-	key := strings.Repeat("a1", 32)
-	collector.addDatabaseCandidate("message.db", key, defaultProfileID, "commoncrypto_cccrypt")
-	collector.addDatabaseCandidate("message.db", key, defaultProfileID, "macos_pbkdf_hook")
-
-	keys, ambiguous := collector.databaseKeys(targets)
-	if ambiguous != 0 || keys["message.db"] != key {
-		t.Fatalf("the same verified key from two sources became ambiguous: keys=%v ambiguous=%d", keys, ambiguous)
-	}
-	origins := collector.databaseCandidates["message.db"][key].origins
-	if !reflect.DeepEqual(origins, map[string]bool{
-		"commoncrypto_cccrypt": true,
-		"macos_pbkdf_hook":     true,
-	}) {
-		t.Fatalf("candidate provenance was not preserved during deduplication: %v", origins)
-	}
-}
-
 func TestPhase2ResultStatePriorityRegression(t *testing.T) {
 	baseTargets := databaseTargets{
-		count: 1,
-		catalog: databaseCatalog{Databases: []catalogDatabase{{
+		Count: 1,
+		Catalog: databaseCatalog{Databases: []catalogDatabase{{
 			DatabaseID: strings.Repeat("ab", 32), RelativePath: "message.db",
 			Classification: classificationEncrypted, RequiredForKeyCoverage: true,
 		}}},

@@ -1,16 +1,44 @@
-package provider
+package acquisition
 
 import (
 	"bytes"
 	"crypto/aes"
 	"encoding/hex"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
+
+	catalogmodel "github.com/zanescope/v-local-key-provider/internal/catalog"
 )
+
+func discoverDatabaseTargets(dbDir string, remaining budget) (databaseTargets, error) {
+	key, err := catalogmodel.RandomKey()
+	if err != nil {
+		return databaseTargets{}, err
+	}
+	defer clearBytes(key)
+	return DiscoverDatabaseTargets(dbDir, remaining, key, catalogmodel.PlatformPolicy{
+		FileIdentity: func(file *os.File) (string, error) {
+			info, err := file.Stat()
+			if err != nil {
+				return "", err
+			}
+			return fmt.Sprintf("%s:%d:%d", file.Name(), info.Size(), info.ModTime().UnixNano()), nil
+		},
+		IsLinkOrReparse: func(_ string, mode fs.FileMode) (bool, error) {
+			return mode&os.ModeSymlink != 0, nil
+		},
+		CanonicalPathKey: func(path string) string {
+			return strings.ToLower(filepath.ToSlash(filepath.Clean(path)))
+		},
+		AcquisitionExpired: remaining.Expired,
+	})
+}
 
 func TestDiscoverDatabaseTargetsUsesFirst16BytesAsSalt(t *testing.T) {
 	root := t.TempDir()
@@ -27,7 +55,7 @@ func TestDiscoverDatabaseTargetsUsesFirst16BytesAsSalt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	paths := targets.bySalt[hex.EncodeToString(salt)]
+	paths := targets.BySalt[hex.EncodeToString(salt)]
 	if len(paths) != 1 || paths[0] != filepath.Join("contact", "contact.db") {
 		t.Fatalf("unexpected targets: %#v", targets)
 	}
@@ -56,18 +84,18 @@ func TestMediaEvidenceFindsV2BlockAndV3XOR(t *testing.T) {
 	}
 
 	evidence := discoverMediaEvidence(account, unlimitedBudget())
-	if len(evidence.v2Blocks) != 1 || evidence.xorCandidates[key] != 1 {
+	if len(evidence.V2Blocks) != 1 || evidence.XORCandidates[key] != 1 {
 		t.Fatalf("unexpected media evidence: %#v", evidence)
 	}
 }
 
 func TestSelectDominantXORRejectsAmbiguityAndAcceptsConsensus(t *testing.T) {
-	evidence := mediaEvidence{xorCandidates: map[byte]int{0x11: 100, 0x22: 10, 0x33: 1}}
+	evidence := mediaEvidence{XORCandidates: map[byte]int{0x11: 100, 0x22: 10, 0x33: 1}}
 	selected, ok, leading, second := selectDominantXOR(evidence)
-	if !ok || leading != 100 || second != 10 || selected.xorCandidates[0x11] != 100 {
-		t.Fatalf("主导候选选择异常：selected=%v ok=%v leading=%d second=%d", selected.xorCandidates, ok, leading, second)
+	if !ok || leading != 100 || second != 10 || selected.XORCandidates[0x11] != 100 {
+		t.Fatalf("主导候选选择异常：selected=%v ok=%v leading=%d second=%d", selected.XORCandidates, ok, leading, second)
 	}
-	ambiguous := mediaEvidence{xorCandidates: map[byte]int{0x11: 10, 0x22: 4}}
+	ambiguous := mediaEvidence{XORCandidates: map[byte]int{0x11: 10, 0x22: 4}}
 	if _, ok, _, _ := selectDominantXOR(ambiguous); ok {
 		t.Fatal("接近的 XOR 候选不应被接受")
 	}
@@ -94,8 +122,8 @@ func TestKVCommCandidateMustMatchV2AndXOREvidence(t *testing.T) {
 	var encrypted [16]byte
 	block.Encrypt(encrypted[:], plain)
 	evidence := mediaEvidence{
-		v2Blocks:      [][16]byte{encrypted},
-		xorCandidates: map[byte]int{byte(candidate.XOR): 20},
+		V2Blocks:      [][16]byte{encrypted},
+		XORCandidates: map[byte]int{byte(candidate.XOR): 20},
 	}
 	resolved, candidates, verified := resolveKVCommMedia(account, evidence)
 	if candidates != 1 || verified != 1 || resolved == nil || *resolved != candidate {
@@ -137,7 +165,7 @@ func TestKVCommCandidateUsesValidatedAccountSuffix(t *testing.T) {
 	var encrypted [16]byte
 	cipher.Encrypt(encrypted[:], plain[:])
 	resolved, candidates, verified := resolveKVCommMedia(account, mediaEvidence{
-		v2Blocks: [][16]byte{encrypted}, xorCandidates: map[byte]int{byte(want.XOR): 9},
+		V2Blocks: [][16]byte{encrypted}, XORCandidates: map[byte]int{byte(want.XOR): 9},
 	})
 	if candidates != 1 || verified != 1 || resolved == nil || *resolved != want {
 		t.Fatalf("suffix candidate was not verified: resolved=%v candidates=%d verified=%d", resolved, candidates, verified)
@@ -157,7 +185,7 @@ func TestKVCommCandidateRejectsInsufficientEvidenceForAmbiguousAccountNames(t *t
 	}
 	account := filepath.Join(t.TempDir(), "alice_abcd")
 	resolved, candidates, verified := resolveKVCommMedia(account, mediaEvidence{
-		v2Blocks: [][16]byte{{0x89, 'P', 'N', 'G'}}, xorCandidates: map[byte]int{byte(245): 9},
+		V2Blocks: [][16]byte{{0x89, 'P', 'N', 'G'}}, XORCandidates: map[byte]int{byte(245): 9},
 	})
 	if resolved != nil || candidates != 1 || verified != 0 {
 		t.Fatalf("ambiguous account names without matching AES evidence should be rejected: resolved=%v candidates=%d verified=%d", resolved, candidates, verified)
@@ -177,7 +205,7 @@ func TestDiscoveryStopsWhenBudgetExpired(t *testing.T) {
 		}
 	}
 	expired := newBudget(time.Now().Add(-time.Second), 1)
-	if evidence := discoverMediaEvidence(account, expired); len(evidence.v2Blocks) != 0 || len(evidence.xorCandidates) != 0 {
+	if evidence := discoverMediaEvidence(account, expired); len(evidence.V2Blocks) != 0 || len(evidence.XORCandidates) != 0 {
 		t.Fatalf("expired discovery should not inspect media files: %#v", evidence)
 	}
 
@@ -195,7 +223,7 @@ func TestDiscoveryStopsWhenBudgetExpired(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expired database discovery returned error: %v", err)
 	}
-	if targets.count != 0 {
+	if targets.Count != 0 {
 		t.Fatalf("expired discovery should not inspect database files: %#v", targets)
 	}
 }
