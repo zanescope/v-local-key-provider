@@ -4,6 +4,40 @@
 
 审计条目按时间倒序记录。每条结论只对其标明的代码基线成立；后续复核可以取代旧结论，但不得静默改写历史。
 
+## 2026-08-26 D-1 workflow/package migration completion
+
+本轮从 `f780f76` 之后多次中断的工作树继续。每次先核对未提交 diff、编译引用和 owner tests，再按独立 commit 收尾；没有发现留在生产路径中的半写函数。工作集中在通用 workflow 的最后四个 root owner，并未改写任何 Phase 3/4 真机能力或 Phase 5 发布声明。
+
+### 实际迁移结果
+
+- `a2d6095` 将 prepare/observe/finalize/cancel、增量 acquisition、响应组装和 session runtime 移入 `internal/session`；根 `session_workflow.go`、`session_response.go`、`session_acquire.go` 删除。
+- `8354923` 将 coverage/classification、Darwin Shadow/SIP fallback、single outcome finalization 和稳定 platform defaults 移入 `internal/diagnostics`。session 直接消费 owner finalizer，不再通过 root callback；旧 `diagnostic_finalize.go` 删除。
+- `1550174` 建立共享 `internal/acquisition.Options`、path/scope/catalog-key parser 和 one-shot workflow。session 通过类型 alias 复用同一 DTO；旧 root `acquisition.go` 删除，catalog-key ownership、discovery timing、platform request、account binding 和 final response assembly 均有内部 owner tests。
+- `4cad6f0` 新增 `internal/command`，拥有平台无关的 one-shot 与 security-posture revalidation；secret publication policy 从 session 提升到 `internal/protocol`，one-shot/session 使用同一 fail-closed 决策。
+- `0bc98b6` 把 finalizer、outcome、scope coverage 和 publication policy 的重复 root/session 测试迁到 package owner，删除只为旧测试存在的 facade。根 `phase_regression_test.go` 只保留真正的 root catalog integration regression。
+- 架构回归现在同时约束 daemon、session、diagnostics、acquisition、command/protocol publication 及 Darwin/Windows 实现边界，禁止内部 package 反向 import Provider 或 workflow 回流 root。根目录生产 Go 文件从审查起点 93 个降为 51 个；最新切片由 56 个降为 51 个。
+
+### 根目录保留判定
+
+不继续为追求“零根文件”机械搬运。51 个文件只允许属于两类：
+
+1. command wiring、schema alias、runtime/policy callback 注入与薄 `*_adapter.go`；
+2. build-tagged caller/runtime trust、签名、路径/file identity、crash hardening、helper/daemon launch 与 OS 原生边界。
+
+`TestProviderRootProductionFilesStayOnCompositionAllowlist` 使用完整 manifest 阻止新增平铺文件；有意新增或删除边界必须在同一变更中解释并更新测试。通用 DTO、状态机、finalizer、响应 publication、平台 acquisition/hook/native scan 均不得回流 root。
+
+### 本轮阶段验证
+
+| 检查 | 结果 |
+| --- | --- |
+| Windows 原生 | `internal/platform/windows`、diagnostics/acquisition/command/protocol/session 全部 `-count=1` 执行通过；`go vet ./...` 与 `go build ./...` 通过。宿主 App Control 仍会随机阻止新生成的 root 测试 EXE，因此 root 的最终实际执行由 WSL 全包矩阵承担；Windows 编译与此前受影响 root 测试均已通过，不把被策略拦截的启动冒充断言结果。 |
+| WSL Go | 原生 `/tmp`/Go cache 下 `go test -count=1 ./...`、`go vet ./...`、`go test -race -count=1 ./...` 全包通过，覆盖新增 workflow、publication policy 和 root architecture manifest。 |
+| build tags | `CGO_ENABLED=0 go build ./...` 在 Windows/macOS/Linux 的 amd64、arm64 共六组目标全部通过。Darwin CGO-disabled 只验证 fallback/build-tag 边界，不冒充 Mach/LLDB cgo 编译或真机执行。 |
+| npm | Provider installer/候选与 promotion manifest/双架构资产/固定目录/下载与回滚测试 13/13 通过。 |
+| 静态 | `gofmt`、`git diff --check`、owner import boundary、旧 facade/旧根文件禁止项与 root allowlist 通过。 |
+
+以上通用检查不解除空生产 registry、Windows x64/ARM64 candidate evidence、Darwin Intel/Apple Silicon cgo/Mach/LLDB 真机、最终签名/notarization、外部 promotion 或 Trusted Publishing 门禁。
+
 ## 2026-08-25 D-1 Darwin hook / evidence 平台垂直切片续作
 
 本轮从 Darwin Mach 切片提交 `4261435` 的干净工作树继续，核对两次中断均未留下半写文件后，迁移剩余 dynamic LLDB hook、目标 binary evidence 与 session process fingerprint；没有改写 Phase 3 能力声明或 Phase 5 发布门禁。

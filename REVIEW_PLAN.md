@@ -5,6 +5,22 @@
 > 计划制定时点：2026-08-25　基线：branch `codex/release-readiness` @ `6e65e53`
 > 原则：设计质量优先；找可优化点；减少冗余与过时内容；给目录结构建议。
 
+## 2026-08-26 执行状态（取代下文的待办语气）
+
+下文保留最初审查计划与当时证据，作为审计 provenance；它不再表示当前工作树仍处于“93 个根文件、核心实现未提交”的状态。当前执行链已经完成：
+
+| 轨道 | 当前结果 |
+| --- | --- |
+| Track 0 | 已由审查检查点提交锁定；所有后续迁移均以独立、可回滚 commit 落地。 |
+| Track A | 已完成规范/审计/迁移三分：`KEY_ACQUISITION_AGENT_ORCHESTRATION.md`、`AUDIT_LOG.md`、`MIGRATION_FROM_LEGACY.md` 各自承担单一职责。 |
+| Track B | Phase 0–5 的代码核销、安全修复与回归矩阵已完成；真实设备、签名候选、notarization、promotion/Trusted Publishing 仍按规范保持外部门禁，未被本地测试冒充。 |
+| D-1 | 已完成领域分包：`internal/{protocol,catalog,crypto,credential,diagnostics,releaseevidence,session,acquisition,command,daemon,workbudget}` 与 `internal/platform/{darwin,windows}` 已成为实现 owner。 |
+| D-2 | 已完成领域命名：生产文件不再使用 `phase3_`/`phase4_` 或含混 `main.go` 命名。 |
+
+最近一轮连续迁移提交为 `a2d6095`（session orchestration）、`8354923`（diagnostic finalization）、`1550174`（one-shot acquisition）、`4cad6f0`（command/protocol publication）和 `0bc98b6`（owner tests 与旧 facade 清理）。根目录生产 Go 文件由审查起点的 93 个收敛为 51 个；这 51 个只允许承担 command/composition 注入或 build-tagged OS 信任/原生边界，并由 `TestProviderRootProductionFilesStayOnCompositionAllowlist` 冻结。新增通用 workflow 必须进入对应 `internal/*` owner，不能继续在根目录平铺。
+
+本轮本地最终矩阵已完成：Windows 关键包、vet/build，WSL 全包普通/vet/race，Windows/macOS/Linux 双架构六组 CGO=0 build，以及 npm 13/13 均通过。目录迁移的本地工作至此完成；当前只剩必须由真机或正式签名流水线解除的能力与发布门禁，不再机械搬空根目录。
+
 ---
 
 ## 0. 核心判断：这不是一次普通代码审查

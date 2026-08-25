@@ -10,6 +10,62 @@ import (
 	"testing"
 )
 
+func TestProviderRootProductionFilesStayOnCompositionAllowlist(t *testing.T) {
+	categories := map[string][]string{
+		"composition": {
+			"acquisition_adapter.go", "budget.go", "catalog_adapter.go", "command.go",
+			"credential_adapter.go", "crypto_adapter.go", "daemon_adapter.go", "diagnostic_platform.go",
+			"diagnostics_adapter.go", "doc.go", "path_identity.go", "platform_session.go",
+			"process_args.go", "process_executable_identity.go", "protocol_adapter.go",
+			"release_evidence_adapter.go", "release_security.go", "sensitive_memory.go",
+			"session_adapter.go", "session_store.go",
+		},
+		"platform_boundary": {
+			"crash_hardening.go", "crash_hardening_other.go", "crash_hardening_unix.go", "crash_hardening_windows.go",
+			"daemon_launch_darwin.go", "daemon_launch_other.go", "darwin_command.go", "darwin_route_registry.go",
+			"file_identity_unix.go", "file_identity_windows.go",
+			"one_shot_caller_darwin.go", "one_shot_caller_other.go", "one_shot_caller_windows.go",
+			"path_safety_other.go", "path_safety_windows.go",
+			"platform_darwin.go", "platform_darwin_nocgo.go", "platform_helper_darwin.go", "platform_helper_other.go",
+			"platform_session_other.go", "platform_unsupported.go",
+			"runtime_trust_darwin.go", "runtime_trust_other.go", "runtime_trust_windows.go",
+			"security_posture_darwin.go", "security_posture_other.go",
+			"session_process_darwin_nocgo.go", "session_process_other.go",
+			"windows_acquisition_windows.go", "windows_config_cipher_adapter.go", "windows_route_registry.go",
+		},
+	}
+	allowed := map[string]string{}
+	for category, names := range categories {
+		for _, name := range names {
+			if previous := allowed[name]; previous != "" {
+				t.Fatalf("root production allowlist duplicates %s in %s and %s", name, previous, category)
+			}
+			allowed[name] = category
+		}
+	}
+
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		seen[name] = true
+		if allowed[name] == "" {
+			t.Errorf("root production file is not an approved composition/platform boundary: %s", name)
+		}
+	}
+	for name, category := range allowed {
+		if !seen[name] {
+			t.Errorf("root %s boundary disappeared without updating the architecture manifest: %s", category, name)
+		}
+	}
+}
+
 func TestDaemonImplementationStaysBehindInternalBoundary(t *testing.T) {
 	allowedRoot := map[string]bool{
 		"daemon_adapter.go":       true,

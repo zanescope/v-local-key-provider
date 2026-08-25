@@ -20,7 +20,7 @@
 | P0-06 | 同 salt 仅复用派生，不复用物理文件验证 | `TestSameSaltFilesAreVerifiedIndependently` |
 | P0-07 | 同一 effective key 的多来源去重；不同 key 冲突 | `TestPhase0SameEffectiveKeyFromMultipleSourcesIsDeduplicated`、`TestDifferentKeysForSameProfileAreValidatorConflict` |
 | P0-08 | CLI 拒绝未知/重复 profile、伪造覆盖计数和 missing ID | CLI `TestPhase0ValidateBundle*` |
-| P0-09 | scope-qualified coverage、media-only `not_requested`、scope 回显及整体结果不变量 | Provider `TestOptionsFromRequestRejectsDuplicateScopes`、`TestMediaOnlyCoverageDoesNotClaimDatabaseCompletion`、`TestAllRequestedScopesCompleteProduceOverallComplete`、`TestCoverageDiagnosticsJSONUsesOnlyScopeQualifiedFields`；CLI `TestPhase0ValidateBundleRejectsAmbiguousOrContradictoryScopeCoverage`、`TestPhase0ValidateBundleRejectsRequestedScopeEchoMismatch` |
+| P0-09 | scope-qualified coverage、media-only `not_requested`、scope 回显及整体结果不变量 | Provider `TestOptionsFromRequestRejectsDuplicateScopes`、`internal/diagnostics.TestFinalizeKeepsCoverageOrthogonalAndScopeExplicit`、`TestCoverageDiagnosticsJSONUsesOnlyScopeQualifiedFields`；CLI `TestPhase0ValidateBundleRejectsAmbiguousOrContradictoryScopeCoverage`、`TestPhase0ValidateBundleRejectsRequestedScopeEchoMismatch` |
 | P0-10 | ciphertext 无 authenticated profile marker 时不得伪造 `unsupported_profile`；所有已登记 profile 均可达 | `TestCatalogDoesNotPinEncryptedPagesToDefaultProfile`、`TestNonDefaultRegisteredProfileCanValidate`；Provider/CLI schema 不再包含死枚举或恒零计数器 |
 
 ## Phase 1：结构化 Credential 与 CLI
@@ -48,8 +48,8 @@
 | P2-06 | `stop_and_report` 只保留已验真的 partial | `TestFinalizeWithoutActionReceiptReturnsVerifiedPartialAndEndsSession` 及 CLI daemon tests |
 | P2-07 | session hard limit、取消、断连和第二 prepare 冲突 | session/platform-session/daemon lifecycle tests |
 | P2-08 | missing-only 不重复扫描已完成数据库 | `TestMissingOnlyTargetsExcludesAlreadyVerifiedDatabase` |
-| P2-09 | mismatch、complete、action、permission、conflict、ambiguous、deadline、partial 的单一有序优先级 | `TestPhase2ResultStatePriorityRegression`、`TestDiagnosticOutcomeRulePriorityIsExplicitAndStable`、session `stop_and_report` mismatch integration test |
-| P2-10 | Shadow/SIP 跨重启 checkpoint 不含授权、路径或 session；新 session 复验后才清除 | CLI `TestExternalCheckpoint*`、`TestSensitiveActionsAreNotDaemonResumable`、Provider `TestFinalizeDiagnosticsRequiresSIPRestorationAfterVerifiedAcquisition` |
+| P2-09 | mismatch、complete、action、permission、conflict、ambiguous、deadline、partial 的单一有序优先级 | `internal/diagnostics.TestFinalizeOutcomePriorityRegression`、`TestOutcomeRulePriorityAndDefaultAreStable`、session `stop_and_report` mismatch integration test |
+| P2-10 | Shadow/SIP 跨重启 checkpoint 不含授权、路径或 session；新 session 复验后才清除 | CLI `TestExternalCheckpoint*`、`TestSensitiveActionsAreNotDaemonResumable`、Provider `internal/diagnostics.TestFinalizeRequiresSIPRestoration` |
 
 ## Phase 3：macOS 三模式
 
@@ -70,7 +70,7 @@
 | P3-07 | SIP 恢复后的新 session | `csrutil status` 机器验证并返回恢复完成状态，不接受纯用户回执 |
 | P3-08 | 多进程/错账号/未知账号 | A/B 进程候选隔离；mismatch 不保存根；unknown 只接受目标 DB HMAC |
 | P3-09 | 拒绝 Shadow/SIP、hook 超时、候选冲突 | 有界停止、无进程暂停、无 secret 临时文件或日志 |
-| P3-10 | Shadow 未实现但优先级高于 SIP | Provider 返回 `shadow_route_status=unavailable_in_build`，不伪造失败；标准访问失败且 SIP 已验证时允许 `disable_sip`，见 Provider `TestUnavailableShadowRouteFallsThroughToSIPWithExplicitEvidence` 与 CLI `TestDisableSIPActionRequiresTerminalShadowRouteEvidence` |
+| P3-10 | Shadow 未实现但优先级高于 SIP | Provider 返回 `shadow_route_status=unavailable_in_build`，不伪造失败；标准访问失败且 SIP 已验证时允许 `disable_sip`，见 Provider `internal/diagnostics.TestFinalizeDarwinShadowFallbackPolicy` 与 CLI `TestDisableSIPActionRequiresTerminalShadowRouteEvidence` |
 
 真机命令由工作流设置 `V_LOCAL_KEY_PROVIDER_LIVE_*` 环境变量后执行：
 
