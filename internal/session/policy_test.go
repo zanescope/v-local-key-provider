@@ -1,6 +1,7 @@
 package session
 
 import (
+	"strings"
 	"testing"
 
 	catalogmodel "github.com/zanescope/v-local-key-provider/internal/catalog"
@@ -20,6 +21,20 @@ func TestReceiptFingerprintBindsMachineObservedTransition(t *testing.T) {
 	}
 	if _, err := ReceiptFingerprint(receipt, state, "before"); err == nil {
 		t.Fatal("restart receipt without observed process change was accepted")
+	}
+}
+
+func TestAccountActionReceiptOnlyAuthorizesPostActionObservation(t *testing.T) {
+	state := ReceiptState{
+		CatalogID: "catalog", ProcessInstanceID: "process", LastRoute: "route-server",
+		LastActionStage: "switch_to_target_account",
+	}
+	receipt := &protocolmodel.ActionReceipt{
+		Action: "switch_to_target_account", UserConfirmed: true, ProcessInstanceID: "process",
+		Route: "route-server", ActionStage: "switch_to_target_account", ObservedProcessTransition: "same_process",
+	}
+	if fingerprint, err := ReceiptFingerprint(receipt, state, "process"); err != nil || fingerprint == "" {
+		t.Fatalf("explicit account action was not accepted: fingerprint=%q err=%v", fingerprint, err)
 	}
 }
 
@@ -62,8 +77,68 @@ func TestSecretPolicyFailsClosedAndAllowsCompleteTerminal(t *testing.T) {
 	}
 }
 
+func TestSecretPolicyCoversBlockedMismatchDeadlineAndRestorationOutcomes(t *testing.T) {
+	key := strings.Repeat("b", 64)
+	secretResponse := protocolmodel.Response{
+		DatabaseKeys:     map[string]string{"message.db": key},
+		DatabaseProfiles: map[string]string{"message.db": "profile"},
+		DatabaseCredential: &credentialmodel.DatabaseCredential{
+			Mode: "per_database",
+		},
+		ImageKeys: &protocolmodel.ImageKeys{AES: "1234567890abcdef", XOR: 7},
+	}
+	for _, test := range []struct {
+		name string
+		diag diagnosticmodel.Diagnostics
+	}{
+		{"waiting", diagnosticmodel.Diagnostics{ResultCode: "action_required", WorkflowStatus: "waiting_action"}},
+		{"blocked", diagnosticmodel.Diagnostics{ResultCode: "unsupported", WorkflowStatus: "blocked"}},
+		{"mismatched_partial", diagnosticmodel.Diagnostics{ResultCode: "partial", WorkflowStatus: "terminal", TargetBindingStatus: "mismatch"}},
+		{"other_account_complete", diagnosticmodel.Diagnostics{ResultCode: "complete", WorkflowStatus: "terminal", SessionAccountStatus: "known_other"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			value := secretResponse
+			value.Diagnostics = test.diag
+			value = EnforceSecretPolicy(value)
+			if value.DatabaseKeys != nil || value.DatabaseProfiles != nil || value.DatabaseCredential != nil || value.ImageKeys != nil {
+				t.Fatalf("unsafe outcome retained secrets: %+v", value)
+			}
+		})
+	}
+
+	allowed := secretResponse
+	allowed.Diagnostics = diagnosticmodel.Diagnostics{
+		ResultCode: "partial", WorkflowStatus: "terminal", TargetBindingStatus: "hmac_verified",
+	}
+	if value := EnforceSecretPolicy(allowed); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
+		t.Fatalf("verified terminal partial lost secrets: %+v", value)
+	}
+	deadline := secretResponse
+	deadline.Diagnostics = diagnosticmodel.Diagnostics{
+		ResultCode: "deadline_exhausted", WorkflowStatus: "terminal", TargetBindingStatus: "hmac_verified",
+	}
+	if value := EnforceSecretPolicy(deadline); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
+		t.Fatalf("verified deadline partial lost secrets: %+v", value)
+	}
+	restoration := secretResponse
+	restoration.Diagnostics = diagnosticmodel.Diagnostics{
+		ResultCode: "action_required", WorkflowStatus: "waiting_action", NextAction: "reenable_sip",
+		SecurityPostureStatus: "restoration_required", RequestedScopes: []string{"database"},
+		DatabaseCoverageStatus: "complete", TargetBindingStatus: "hmac_verified",
+	}
+	if value := EnforceSecretPolicy(restoration); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
+		t.Fatalf("complete SIP-restoration outcome lost verified secrets: %+v", value)
+	}
+	restoration.Diagnostics.DatabaseCoverageStatus = "partial"
+	if value := EnforceSecretPolicy(restoration); value.DatabaseKeys != nil || value.DatabaseCredential != nil || value.ImageKeys != nil {
+		t.Fatalf("incomplete SIP-restoration outcome retained secrets: %+v", value)
+	}
+}
+
 func TestActionRetryLimitsRemainBounded(t *testing.T) {
-	if ActionRetryLimit("trigger_database") != 2 || ActionRetryLimit("restart_wechat") != 1 || ActionRetryLimit("disable_sip") != 0 {
+	if ActionRetryLimit("trigger_database") != 2 || ActionRetryLimit("restart_wechat") != 1 ||
+		ActionRetryLimit("relogin_wechat") != 1 || ActionRetryLimit("switch_to_target_account") != 1 ||
+		ActionRetryLimit("disable_sip") != 0 {
 		t.Fatal("action retry limits changed")
 	}
 }

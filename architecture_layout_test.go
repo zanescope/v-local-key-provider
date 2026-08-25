@@ -207,3 +207,63 @@ func TestDarwinAcquisitionAndHookImplementationStayBehindInternalBoundary(t *tes
 		}
 	}
 }
+
+func TestSessionWorkflowImplementationStaysBehindInternalBoundary(t *testing.T) {
+	allowedRoot := map[string]bool{
+		"session_adapter.go":              true,
+		"session_store.go":                true,
+		"session_process_darwin_nocgo.go": true,
+		"session_process_other.go":        true,
+	}
+	rootEntries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range rootEntries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasPrefix(name, "session_") || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		if !allowedRoot[name] {
+			t.Errorf("session workflow implementation returned to the Provider root: %s", name)
+		}
+	}
+	for _, name := range []string{"session_workflow.go", "session_response.go", "session_acquire.go"} {
+		if _, err := os.Stat(name); err == nil || !os.IsNotExist(err) {
+			t.Errorf("session workflow implementation returned to the Provider root: %s", name)
+		}
+	}
+	for _, name := range []string{"coordinator.go", "response.go", "incremental.go", "runtime.go", "store.go", "policy.go"} {
+		if _, err := os.Stat(filepath.Join("internal", "session", name)); err != nil {
+			t.Errorf("internal session implementation is missing %s: %v", name, err)
+		}
+	}
+
+	entries, err := os.ReadDir(filepath.Join("internal", "session"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := token.NewFileSet()
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join("internal", "session", name)
+		parsed, err := parser.ParseFile(files, path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Errorf("cannot parse %s: %v", path, err)
+			continue
+		}
+		for _, imported := range parsed.Imports {
+			value, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				t.Errorf("cannot decode import in %s: %v", path, err)
+				continue
+			}
+			if value == "github.com/zanescope/v-local-key-provider" {
+				t.Errorf("%s imports the Provider composition root", path)
+			}
+		}
+	}
+}

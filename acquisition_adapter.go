@@ -38,14 +38,6 @@ func newCandidateCollector(targets databaseTargets, media mediaEvidence, budgets
 	return acquisitionmodel.NewCollector(targets, media, candidateRuntime(), budgets[0].value)
 }
 
-func targetsFromCatalog(catalog databaseCatalog, pages []databasePage) databaseTargets {
-	return acquisitionmodel.TargetsFromCatalog(catalog, pages)
-}
-
-func acquisitionMissingTargets(targets databaseTargets, existing map[string]string) databaseTargets {
-	return acquisitionmodel.MissingTargets(targets, existing)
-}
-
 func databaseDiscoveryPolicy(remaining budget) catalogmodel.PlatformPolicy {
 	return catalogmodel.PlatformPolicy{
 		FileIdentity:       platformFileIdentity,
@@ -70,14 +62,6 @@ func discoverDatabaseTargets(dbDir string, remaining budget) (databaseTargets, e
 
 func discoverMediaEvidence(accountDir string, remaining budget) mediaEvidence {
 	return acquisitionmodel.DiscoverMediaEvidence(accountDir, remaining.value)
-}
-
-func selectDominantXOR(evidence mediaEvidence) (mediaEvidence, bool, int, int) {
-	return acquisitionmodel.SelectDominantXOR(evidence)
-}
-
-func resolveKVCommMedia(accountDir string, evidence mediaEvidence) (*imageKeys, int, int) {
-	return acquisitionmodel.ResolveKVCommMedia(accountDir, evidence)
 }
 
 type providerPlatformDriver struct{}

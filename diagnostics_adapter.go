@@ -4,36 +4,12 @@ import diagnosticmodel "github.com/zanescope/v-local-key-provider/internal/diagn
 
 type diagnostics = diagnosticmodel.Diagnostics
 
-type sessionDiagnosticMergePolicy = diagnosticmodel.SessionMergePolicy
-
 func newDiagnosticSchema(platform string, scopes []string) diagnostics {
 	return diagnosticmodel.New(platform, scopes, defaultSecurityPostureStatus())
 }
 
 func canonicalRequestedScopes(scopes []string) []string {
 	return diagnosticmodel.CanonicalScopes(scopes)
-}
-
-func validateSessionDiagnosticMergePolicies(policies map[string]sessionDiagnosticMergePolicy) error {
-	return diagnosticmodel.ValidateSessionMergePolicies(policies)
-}
-
-func newSessionDiagnosticMergePolicies() map[string]sessionDiagnosticMergePolicy {
-	return diagnosticmodel.NewSessionMergePolicies()
-}
-
-var sessionDiagnosticMergePolicies = newSessionDiagnosticMergePolicies()
-
-func copyWindowsProcessSnapshot(destination *diagnostics, source diagnostics) {
-	diagnosticmodel.CopyWindowsProcessSnapshot(destination, source)
-}
-
-func copyWindowsRouteIdentity(destination *diagnostics, source diagnostics) {
-	diagnosticmodel.CopyWindowsRouteIdentity(destination, source)
-}
-
-func mergeSessionDiagnosticFields(previous diagnostics, next *diagnostics) {
-	diagnosticmodel.MergeSessionFields(previous, next, sessionDiagnosticMergePolicies)
 }
 
 type diagnosticOutcome struct {

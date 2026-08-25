@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	sessionmodel "github.com/zanescope/v-local-key-provider/internal/session"
 )
 
 func sessionRequestFixture(t *testing.T, operation string) acquireRequest {
@@ -106,7 +108,10 @@ func TestSessionRejectsDuplicateActionReceiptWithoutStateChange(t *testing.T) {
 		Action: "trigger_database", UserConfirmed: true, ObservedProcessTransition: "same_process",
 		ProcessInstanceID: session.ProcessInstanceID, ActionStage: "trigger_database",
 	}
-	fingerprint, err := receiptFingerprint(receipt, session, platformProcessInstanceID())
+	fingerprint, err := sessionmodel.ReceiptFingerprint(receipt, sessionmodel.ReceiptState{
+		CatalogID: session.CatalogID, ProcessInstanceID: session.ProcessInstanceID,
+		LastRoute: session.LastRoute, LastActionStage: session.LastActionStage,
+	}, platformProcessInstanceID())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,116 +158,6 @@ func TestSessionRejectsSensitiveOrCallerControlledActionReceipt(t *testing.T) {
 	}
 	if result.Diagnostics.WorkflowStatus != "blocked" || result.Diagnostics.BlockingReasons[0] != "action_receipt_rejected" {
 		t.Fatalf("sensitive receipt was not rejected: %+v", result.Diagnostics)
-	}
-}
-
-func TestRestartReceiptRequiresObservedProcessInstanceChange(t *testing.T) {
-	session := &acquisitionSession{
-		CatalogID: "catalog", ProcessInstanceID: "process-before", LastRoute: "route-server", LastActionStage: "restart_wechat",
-	}
-	receipt := &actionReceipt{
-		Action: "restart_wechat", UserConfirmed: true, ProcessInstanceID: "process-before",
-		Route: "route-server", ActionStage: "restart_wechat", ObservedProcessTransition: "same_process",
-	}
-	if _, err := receiptFingerprint(receipt, session, "process-before"); err == nil {
-		t.Fatal("restart receipt was accepted without a machine-observed process transition")
-	}
-	receipt.ObservedProcessTransition = "process_changed"
-	if fingerprint, err := receiptFingerprint(receipt, session, "process-after"); err != nil || fingerprint == "" {
-		t.Fatalf("restart receipt with a process transition was rejected: fingerprint=%q err=%v", fingerprint, err)
-	}
-}
-
-func TestPhase4SessionMergeKeepsCurrentWindowsProcessSnapshotCoherent(t *testing.T) {
-	existing := &response{Diagnostics: diagnostics{
-		Platform: "windows", ProcessDiscoveryMethod: "toolhelp_snapshot",
-		ProcessCount: 1, OtherAccountProcessCount: 1,
-		TargetBindingStatus: "mismatch", SessionAccountStatus: "known_other",
-		ProcessAccessStatus:     "not_attempted_account_mismatch",
-		ConfigCipherRouteStatus: windowsConfigCipherNotEvaluated,
-		ScannedBytes:            11,
-	}}
-	next := diagnostics{
-		Platform: "windows", ProcessDiscoveryMethod: "toolhelp_snapshot",
-		ProcessCount: 1, SelectedProcessCount: 1, TargetBoundProcessCount: 1, OpenedProcessCount: 1,
-		TargetBindingStatus: "path_verified", SessionAccountStatus: "known_target",
-		ProcessAccessStatus: "direct_opened", ConfigCipherRouteStatus: windowsConfigCipherUnavailableUnknown,
-		ScannedBytes: 7,
-	}
-	mergeSessionDiagnosticEvidence(existing, &next)
-	if next.ProcessCount != 1 || next.SelectedProcessCount != 1 || next.TargetBoundProcessCount != 1 ||
-		next.OtherAccountProcessCount != 0 || next.UnknownAccountProcessCount != 0 || next.OpenedProcessCount != 1 ||
-		next.TargetBindingStatus != "path_verified" || next.SessionAccountStatus != "known_target" {
-		t.Fatalf("Windows process snapshots were merged field-by-field: %+v", next)
-	}
-	if next.ScannedBytes != 18 {
-		t.Fatalf("Windows session scan bytes were not accumulated: %d", next.ScannedBytes)
-	}
-}
-
-func TestPhase4SessionMergeReusesWholeWindowsSnapshotWhenNoScanRuns(t *testing.T) {
-	existing := &response{Diagnostics: diagnostics{
-		Platform: "windows", ProcessDiscoveryMethod: "toolhelp_snapshot",
-		ProcessCount: 2, SelectedProcessCount: 1, TargetBoundProcessCount: 1,
-		OtherAccountProcessCount: 1, OpenedProcessCount: 1,
-		TargetBindingStatus: "path_verified", SessionAccountStatus: "known_target",
-		ProcessAccessStatus: "direct_opened", ProcessArchitecture: "amd64",
-		ProcessArchitectureStatus: windowsArchitectureVerified,
-		ConfigCipherRouteStatus:   windowsConfigCipherUnavailableUnknown,
-	}}
-	next := diagnostics{Platform: "windows"}
-	mergeSessionDiagnosticEvidence(existing, &next)
-	if next.ProcessDiscoveryMethod != "toolhelp_snapshot" || next.ProcessCount != 2 || next.SelectedProcessCount != 1 ||
-		next.TargetBoundProcessCount != 1 || next.OtherAccountProcessCount != 1 || next.OpenedProcessCount != 1 ||
-		next.ProcessArchitecture != "amd64" || next.ProcessArchitectureStatus != windowsArchitectureVerified {
-		t.Fatalf("Windows process snapshot was not preserved as a unit: %+v", next)
-	}
-}
-
-func TestSessionDiagnosticMergePolicyIsExhaustiveAndSemanticallyTyped(t *testing.T) {
-	if err := validateSessionDiagnosticMergePolicies(sessionDiagnosticMergePolicies); err != nil {
-		t.Fatal(err)
-	}
-	existing := &response{Diagnostics: diagnostics{
-		Platform: "darwin", CandidateCount: 2, RawKeyCandidateCount: 3,
-		AmbiguousDatabaseKeys: 1, V2SampleCount: 4, ScanLimited: true,
-		VersionSupport: "verified", HookTriggerRequired: true, HookReloginRequired: true,
-	}}
-	next := diagnostics{
-		Platform: "darwin", CandidateCount: 5, RawKeyCandidateCount: 7,
-		V2SampleCount: 2,
-	}
-	mergeSessionDiagnosticEvidence(existing, &next)
-	if next.CandidateCount != 7 || next.RawKeyCandidateCount != 10 {
-		t.Fatalf("scan observations were not accumulated: %+v", next)
-	}
-	if next.AmbiguousDatabaseKeys != 1 || next.V2SampleCount != 4 || !next.ScanLimited || next.VersionSupport != "verified" {
-		t.Fatalf("monotonic diagnostic evidence was lost: %+v", next)
-	}
-	if next.HookTriggerRequired || next.HookReloginRequired {
-		t.Fatalf("prior action flags leaked into the current pass: %+v", next)
-	}
-}
-
-func TestAccountActionReceiptOnlyAuthorizesPostActionObservation(t *testing.T) {
-	session := &acquisitionSession{
-		CatalogID: "catalog", ProcessInstanceID: "process", LastRoute: "route-server",
-		LastActionStage: "switch_to_target_account",
-	}
-	receipt := &actionReceipt{
-		Action: "switch_to_target_account", UserConfirmed: true, ProcessInstanceID: "process",
-		Route: "route-server", ActionStage: "switch_to_target_account", ObservedProcessTransition: "same_process",
-	}
-	if fingerprint, err := receiptFingerprint(receipt, session, "process"); err != nil || fingerprint == "" {
-		t.Fatalf("explicit account action was not accepted for post-action observation: fingerprint=%q err=%v", fingerprint, err)
-	}
-}
-
-func TestPhase2ActionsHaveFiniteRetryBudgets(t *testing.T) {
-	if phase2ActionRetryLimit("trigger_database") != 2 || phase2ActionRetryLimit("restart_wechat") != 1 ||
-		phase2ActionRetryLimit("relogin_wechat") != 1 || phase2ActionRetryLimit("switch_to_target_account") != 1 ||
-		phase2ActionRetryLimit("disable_sip") != 0 {
-		t.Fatal("Phase 2 action retry limits are not finite and explicit")
 	}
 }
 
@@ -377,55 +272,6 @@ func TestFinalizeWithoutReceiptDoesNotConvertAccountMismatchToPartial(t *testing
 	}
 	if !store.hasSession(session.ID) {
 		t.Fatal("account mismatch finalize unexpectedly destroyed the actionable session")
-	}
-}
-
-func TestResponseSecretPolicyRejectsBlockedOrMismatchedOutcomes(t *testing.T) {
-	key := strings.Repeat("b", 64)
-	secretResponse := response{
-		DatabaseKeys: map[string]string{"message.db": key}, DatabaseProfiles: map[string]string{"message.db": defaultProfileID},
-		DatabaseCredential: &databaseCredential{Mode: "per_database"}, ImageKeys: &imageKeys{AES: "1234567890abcdef", XOR: 7},
-	}
-	for _, test := range []struct {
-		name string
-		diag diagnostics
-	}{
-		{"waiting", diagnostics{ResultCode: "action_required", WorkflowStatus: "waiting_action"}},
-		{"blocked", diagnostics{ResultCode: "unsupported", WorkflowStatus: "blocked"}},
-		{"mismatched_partial", diagnostics{ResultCode: "partial", WorkflowStatus: "terminal", TargetBindingStatus: "mismatch"}},
-		{"other_account_complete", diagnostics{ResultCode: "complete", WorkflowStatus: "terminal", SessionAccountStatus: "known_other"}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			value := secretResponse
-			value.Diagnostics = test.diag
-			value = enforceResponseSecretPolicy(value)
-			if value.DatabaseKeys != nil || value.DatabaseProfiles != nil || value.DatabaseCredential != nil || value.ImageKeys != nil {
-				t.Fatalf("unsafe outcome retained secrets: %+v", value)
-			}
-		})
-	}
-	allowed := secretResponse
-	allowed.Diagnostics = diagnostics{ResultCode: "partial", WorkflowStatus: "terminal", TargetBindingStatus: "hmac_verified"}
-	if value := enforceResponseSecretPolicy(allowed); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
-		t.Fatalf("verified terminal partial lost secrets: %+v", value)
-	}
-	deadline := secretResponse
-	deadline.Diagnostics = diagnostics{ResultCode: "deadline_exhausted", WorkflowStatus: "terminal", TargetBindingStatus: "hmac_verified"}
-	if value := enforceResponseSecretPolicy(deadline); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
-		t.Fatalf("verified deadline partial lost secrets: %+v", value)
-	}
-	restoration := secretResponse
-	restoration.Diagnostics = diagnostics{
-		ResultCode: "action_required", WorkflowStatus: "waiting_action", NextAction: "reenable_sip",
-		SecurityPostureStatus: "restoration_required", RequestedScopes: []string{"database"},
-		DatabaseCoverageStatus: "complete", TargetBindingStatus: "hmac_verified",
-	}
-	if value := enforceResponseSecretPolicy(restoration); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
-		t.Fatalf("complete SIP-restoration outcome lost verified secrets: %+v", value)
-	}
-	restoration.Diagnostics.DatabaseCoverageStatus = "partial"
-	if value := enforceResponseSecretPolicy(restoration); value.DatabaseKeys != nil || value.DatabaseCredential != nil || value.ImageKeys != nil {
-		t.Fatalf("incomplete SIP-restoration outcome retained secrets: %+v", value)
 	}
 }
 
@@ -645,25 +491,6 @@ func TestFinalizeDiagnosticsRequiresSIPRestorationBeforeSIPRouteStarts(t *testin
 		diag.SecurityPostureStatus != "restoration_required" || len(diag.BlockingReasons) != 1 ||
 		diag.BlockingReasons[0] != "sip_disabled_route_not_attempted" || len(diag.RoutesAttempted) != 0 {
 		t.Fatalf("SIP-disabled preflight failure did not require restoration without fabricating a route: %+v", diag)
-	}
-}
-
-func TestMergeSessionDiagnosticEvidencePreservesPhase3MachineEvidence(t *testing.T) {
-	existing := &response{Diagnostics: diagnostics{
-		BinaryFingerprintStatus: "verified", BinarySigningStatus: "verified",
-		ProcessArchitecture: "arm64", ProcessArchitectureStatus: "verified_running_process",
-		ProcessTranslationStatus: "native", CompatibilityRegistryStatus: "unregistered",
-		StandardRouteStatus: "eligible_generic_dynamic", ShadowRouteStatus: "unavailable_in_build",
-		RoutePriority: []string{"standard", "shadow", "sip_disabled"}, HelperStatus: "used",
-	}}
-	next := diagnostics{}
-	mergeSessionDiagnosticEvidence(existing, &next)
-	if next.BinaryFingerprintStatus != "verified" || next.BinarySigningStatus != "verified" ||
-		next.ProcessArchitecture != "arm64" || next.ProcessArchitectureStatus != "verified_running_process" ||
-		next.ProcessTranslationStatus != "native" || next.CompatibilityRegistryStatus != "unregistered" ||
-		next.StandardRouteStatus != "eligible_generic_dynamic" || next.ShadowRouteStatus != "unavailable_in_build" ||
-		len(next.RoutePriority) != 3 || next.HelperStatus != "used" {
-		t.Fatalf("incremental session lost Phase 3 evidence: %+v", next)
 	}
 }
 
@@ -930,21 +757,6 @@ func TestSecondPrepareDoesNotDestroyActiveAccountSession(t *testing.T) {
 	}
 	if !store.hasSession(first.Diagnostics.SessionID) || store.activeCount() != 1 {
 		t.Fatal("second prepare destroyed the active account session")
-	}
-}
-
-func TestMissingOnlyTargetsExcludesAlreadyVerifiedDatabase(t *testing.T) {
-	targets := databaseTargets{
-		Catalog: databaseCatalog{CatalogID: "catalog", Databases: []catalogDatabase{
-			{DatabaseID: "db-a", RelativePath: "a.db", Salt: "aa", Classification: classificationEncrypted, RequiredForKeyCoverage: true},
-			{DatabaseID: "db-b", RelativePath: "b.db", Salt: "bb", Classification: classificationEncrypted, RequiredForKeyCoverage: true},
-		}},
-		Pages: []databasePage{{Path: "a.db", Salt: "aa"}, {Path: "b.db", Salt: "bb"}},
-	}
-	targets = targetsFromCatalog(targets.Catalog, targets.Pages)
-	missing := missingOnlyTargets(targets, map[string]string{"a.db": strings.Repeat("a", 64)})
-	if missing.Count != 1 || len(missing.Pages) != 1 || missing.Pages[0].Path != "b.db" || len(missing.BySalt["aa"]) != 0 {
-		t.Fatalf("missing-only target set is invalid: %+v", missing)
 	}
 }
 

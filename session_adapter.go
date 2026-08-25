@@ -1,66 +1,79 @@
 package provider
 
-import sessionmodel "github.com/zanescope/v-local-key-provider/internal/session"
+import (
+	acquisitionmodel "github.com/zanescope/v-local-key-provider/internal/acquisition"
+	diagnosticmodel "github.com/zanescope/v-local-key-provider/internal/diagnostics"
+	protocolmodel "github.com/zanescope/v-local-key-provider/internal/protocol"
+	sessionmodel "github.com/zanescope/v-local-key-provider/internal/session"
+	"github.com/zanescope/v-local-key-provider/internal/workbudget"
+)
 
-func receiptFingerprint(receipt *actionReceipt, session *acquisitionSession, currentProcessInstanceID string) (string, error) {
-	return sessionmodel.ReceiptFingerprint(receipt, sessionmodel.ReceiptState{
-		CatalogID: session.CatalogID, ProcessInstanceID: session.ProcessInstanceID,
-		LastRoute: session.LastRoute, LastActionStage: session.LastActionStage,
-	}, currentProcessInstanceID)
+func sessionOptionsFromAcquire(options acquireOptions) sessionmodel.Options {
+	return sessionmodel.Options{
+		AccountDir: options.accountDir, DBDir: options.dbDir,
+		Database: options.database, Media: options.media, Budget: options.budget.value,
+		HelperMode: options.helperMode, HelperStatus: options.helperStatus,
+		CatalogKey: options.catalogKey, PlatformSession: options.platformSession,
+		ActionReceipt: options.actionReceipt,
+	}
 }
 
-func sameScopes(left, right []string) bool {
-	return sessionmodel.SameScopes(left, right)
+func acquireOptionsFromSession(options sessionmodel.Options) acquireOptions {
+	return acquireOptions{
+		accountDir: options.AccountDir, dbDir: options.DBDir,
+		database: options.Database, media: options.Media, budget: budget{value: options.Budget},
+		helperMode: options.HelperMode, helperStatus: options.HelperStatus,
+		catalogKey: options.CatalogKey, platformSession: options.PlatformSession,
+		actionReceipt: options.ActionReceipt,
+	}
 }
 
-func appendUniqueStrings(values []string, additions ...string) []string {
-	return sessionmodel.AppendUniqueStrings(values, additions...)
+// sessionPlatformDriver resolves the current composition-root driver for each
+// call so tests and platform builds can replace the driver without rebuilding
+// an already-created session coordinator.
+type sessionPlatformDriver struct{}
+
+func (sessionPlatformDriver) Acquire(
+	targets acquisitionmodel.Targets,
+	media acquisitionmodel.MediaEvidence,
+	request acquisitionmodel.PlatformRequest,
+) (protocolmodel.Response, diagnosticmodel.Diagnostics, error) {
+	return platformDriver.Acquire(targets, media, request)
 }
 
-func cloneDatabaseCredential(value *databaseCredential) *databaseCredential {
-	return sessionmodel.CloneDatabaseCredential(value)
-}
-
-func mergeDatabaseCredentials(existing, next *databaseCredential) *databaseCredential {
-	return sessionmodel.MergeDatabaseCredentials(existing, next)
-}
-
-func mergeSessionResults(existing *response, next response) response {
-	return sessionmodel.MergeResults(existing, next)
-}
-
-func phase2SessionAction(action string) bool {
-	return sessionmodel.IsAction(action)
-}
-
-func phase2PartialFinalizeAction(action string) bool {
-	return sessionmodel.IsPartialFinalizeAction(action)
-}
-
-func phase2ActionRetryLimit(action string) int {
-	return sessionmodel.ActionRetryLimit(action)
-}
-
-func responseWithoutSecrets(value response) response {
-	return sessionmodel.WithoutSecrets(value)
-}
-
-func diagnosticsHaveCompleteRequestedCoverage(diag diagnostics) bool {
-	return sessionmodel.HasCompleteRequestedCoverage(diag)
-}
-
-func diagnosticsPermitSecrets(diag diagnostics) bool {
-	return sessionmodel.DiagnosticsPermitSecrets(diag)
+func acquisitionSessionRuntime() sessionmodel.Runtime {
+	return sessionmodel.Runtime{
+		Protocol: protocolName,
+		ParseOptions: func(request protocolmodel.AcquireRequest) (sessionmodel.Options, error) {
+			options, err := optionsFromRequest(request)
+			return sessionOptionsFromAcquire(options), err
+		},
+		DiscoverTargets: func(dbDir string, remaining workbudget.Budget, catalogKey []byte) (acquisitionmodel.Targets, error) {
+			return discoverDatabaseTargetsWithKey(dbDir, budget{value: remaining}, catalogKey)
+		},
+		DiscoverMedia: func(accountDir string, remaining workbudget.Budget) acquisitionmodel.MediaEvidence {
+			return discoverMediaEvidence(accountDir, budget{value: remaining})
+		},
+		PreparePlatformSession: func(targets acquisitionmodel.Targets, options sessionmodel.Options) acquisitionmodel.PlatformSession {
+			return preparePlatformAcquisitionSession(targets, acquireOptionsFromSession(options))
+		},
+		ProcessInstanceID: platformProcessInstanceID,
+		NewOpaqueID:       randomOpaqueID,
+		NewDiagnostics: func(scopes []string) diagnosticmodel.Diagnostics {
+			return newDiagnostics(platformNameForDiagnostics(), scopes)
+		},
+		ApplyDiagnosticDefaults: applyPlatformDiagnosticDefaults,
+		Driver:                  sessionPlatformDriver{},
+		FinalizeDiagnostics: func(diag *diagnosticmodel.Diagnostics, targets acquisitionmodel.Targets, result protocolmodel.Response, options sessionmodel.Options) {
+			finalizeDiagnostics(diag, targets, result, acquireOptionsFromSession(options))
+		},
+		CatalogHMAC:      catalogHMAC,
+		ProfileSummaries: profileSummaries,
+		ClearSensitive:   zeroBytes,
+		ConfigStatusRank: windowsConfigStatusRank,
+	}
 }
 
 func enforceResponseSecretPolicy(value response) response {
 	return sessionmodel.EnforceSecretPolicy(value)
-}
-
-func terminalEmptyCoverageStatuses(scopes []string) (string, string) {
-	return sessionmodel.TerminalEmptyCoverageStatuses(scopes)
-}
-
-func databaseTargetStatus(scopes []string, latest *response) string {
-	return sessionmodel.DatabaseTargetStatus(scopes, latest)
 }
