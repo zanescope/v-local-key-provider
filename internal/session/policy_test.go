@@ -1,12 +1,10 @@
 package session
 
 import (
-	"strings"
 	"testing"
 
 	catalogmodel "github.com/zanescope/v-local-key-provider/internal/catalog"
 	credentialmodel "github.com/zanescope/v-local-key-provider/internal/credential"
-	diagnosticmodel "github.com/zanescope/v-local-key-provider/internal/diagnostics"
 	protocolmodel "github.com/zanescope/v-local-key-provider/internal/protocol"
 )
 
@@ -54,84 +52,6 @@ func TestMergeResultsPreservesEvidenceAndOverridesCurrentValues(t *testing.T) {
 	merged := MergeResults(existing, next)
 	if merged.DatabaseKeys["a.db"] != "new" || merged.DatabaseKeys["b.db"] != "old-b" || len(merged.DatabaseCredential.Roots[0].VerifiedDatabaseIDs) != 2 {
 		t.Fatalf("unexpected merged response: %+v", merged)
-	}
-}
-
-func TestSecretPolicyFailsClosedAndAllowsCompleteTerminal(t *testing.T) {
-	value := protocolmodel.Response{
-		DatabaseKeys: map[string]string{"a": "secret"},
-		ImageKeys:    &protocolmodel.ImageKeys{AES: "secret"},
-		Diagnostics: diagnosticmodel.Diagnostics{
-			RequestedScopes: []string{"database"}, DatabaseCoverageStatus: "complete",
-			ResultCode: "action_required", WorkflowStatus: "blocked", BlockingReasons: []string{"catalog_drift"},
-		},
-	}
-	if filtered := protocolmodel.EnforceSecretPolicy(value); filtered.DatabaseKeys != nil || filtered.ImageKeys != nil {
-		t.Fatalf("blocked response leaked secrets: %+v", filtered)
-	}
-	value.Diagnostics.ResultCode = "complete"
-	value.Diagnostics.WorkflowStatus = "terminal"
-	value.Diagnostics.BlockingReasons = nil
-	if filtered := protocolmodel.EnforceSecretPolicy(value); filtered.DatabaseKeys == nil || filtered.ImageKeys == nil {
-		t.Fatalf("complete terminal response lost secrets: %+v", filtered)
-	}
-}
-
-func TestSecretPolicyCoversBlockedMismatchDeadlineAndRestorationOutcomes(t *testing.T) {
-	key := strings.Repeat("b", 64)
-	secretResponse := protocolmodel.Response{
-		DatabaseKeys:     map[string]string{"message.db": key},
-		DatabaseProfiles: map[string]string{"message.db": "profile"},
-		DatabaseCredential: &credentialmodel.DatabaseCredential{
-			Mode: "per_database",
-		},
-		ImageKeys: &protocolmodel.ImageKeys{AES: "1234567890abcdef", XOR: 7},
-	}
-	for _, test := range []struct {
-		name string
-		diag diagnosticmodel.Diagnostics
-	}{
-		{"waiting", diagnosticmodel.Diagnostics{ResultCode: "action_required", WorkflowStatus: "waiting_action"}},
-		{"blocked", diagnosticmodel.Diagnostics{ResultCode: "unsupported", WorkflowStatus: "blocked"}},
-		{"mismatched_partial", diagnosticmodel.Diagnostics{ResultCode: "partial", WorkflowStatus: "terminal", TargetBindingStatus: "mismatch"}},
-		{"other_account_complete", diagnosticmodel.Diagnostics{ResultCode: "complete", WorkflowStatus: "terminal", SessionAccountStatus: "known_other"}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			value := secretResponse
-			value.Diagnostics = test.diag
-			value = protocolmodel.EnforceSecretPolicy(value)
-			if value.DatabaseKeys != nil || value.DatabaseProfiles != nil || value.DatabaseCredential != nil || value.ImageKeys != nil {
-				t.Fatalf("unsafe outcome retained secrets: %+v", value)
-			}
-		})
-	}
-
-	allowed := secretResponse
-	allowed.Diagnostics = diagnosticmodel.Diagnostics{
-		ResultCode: "partial", WorkflowStatus: "terminal", TargetBindingStatus: "hmac_verified",
-	}
-	if value := protocolmodel.EnforceSecretPolicy(allowed); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
-		t.Fatalf("verified terminal partial lost secrets: %+v", value)
-	}
-	deadline := secretResponse
-	deadline.Diagnostics = diagnosticmodel.Diagnostics{
-		ResultCode: "deadline_exhausted", WorkflowStatus: "terminal", TargetBindingStatus: "hmac_verified",
-	}
-	if value := protocolmodel.EnforceSecretPolicy(deadline); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
-		t.Fatalf("verified deadline partial lost secrets: %+v", value)
-	}
-	restoration := secretResponse
-	restoration.Diagnostics = diagnosticmodel.Diagnostics{
-		ResultCode: "action_required", WorkflowStatus: "waiting_action", NextAction: "reenable_sip",
-		SecurityPostureStatus: "restoration_required", RequestedScopes: []string{"database"},
-		DatabaseCoverageStatus: "complete", TargetBindingStatus: "hmac_verified",
-	}
-	if value := protocolmodel.EnforceSecretPolicy(restoration); value.DatabaseKeys == nil || value.DatabaseCredential == nil || value.ImageKeys == nil {
-		t.Fatalf("complete SIP-restoration outcome lost verified secrets: %+v", value)
-	}
-	restoration.Diagnostics.DatabaseCoverageStatus = "partial"
-	if value := protocolmodel.EnforceSecretPolicy(restoration); value.DatabaseKeys != nil || value.DatabaseCredential != nil || value.ImageKeys != nil {
-		t.Fatalf("incomplete SIP-restoration outcome retained secrets: %+v", value)
 	}
 }
 

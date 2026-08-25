@@ -24,20 +24,3 @@ func applyPlatformDiagnosticDefaults(diag *diagnostics) {
 func newDiagnostics(platform string, scopes []string) diagnostics {
 	return diagnosticmodel.NewWithPlatformDefaults(platform, scopes, platformDiagnosticDefaults())
 }
-
-func finalizeDiagnostics(diag *diagnostics, targets databaseTargets, result response, options acquireOptions) {
-	diagnosticmodel.Finalize(diag, diagnosticmodel.FinalizeInput{
-		Catalog: targets.Catalog, RequiredDatabaseCount: targets.Count,
-		DatabaseKeys: result.DatabaseKeys, DatabaseCredential: result.DatabaseCredential,
-		ImageKeysPresent:  result.ImageKeys != nil,
-		DatabaseRequested: options.Database, MediaRequested: options.Media,
-		BudgetExpired: options.Budget.Expired(), PlatformDefaults: platformDiagnosticDefaults(),
-	})
-}
-
-func applyFixedDiagnosticOutcome(diag *diagnostics, resultCode, workflowStatus, nextAction string, reasons ...string) {
-	diagnosticmodel.ApplyOutcome(diag, diagnosticmodel.FixedOutcome(
-		diagnosticmodel.DecisionContext{Diagnostics: *diag},
-		resultCode, workflowStatus, nextAction, reasons...,
-	))
-}

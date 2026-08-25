@@ -279,6 +279,15 @@ func TestDiagnosticFinalizationStaysBehindInternalBoundary(t *testing.T) {
 			t.Errorf("internal diagnostic implementation is missing %s: %v", name, err)
 		}
 	}
+	adapter, err := os.ReadFile("diagnostics_adapter.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"func finalizeDiagnostics", "func applyFixedDiagnosticOutcome"} {
+		if strings.Contains(string(adapter), forbidden) {
+			t.Errorf("diagnostic adapter retained test-only legacy facade %q", forbidden)
+		}
+	}
 
 	entries, err := os.ReadDir(filepath.Join("internal", "diagnostics"))
 	if err != nil {
@@ -329,6 +338,7 @@ func TestAcquisitionWorkflowImplementationStaysBehindInternalBoundary(t *testing
 	}
 	for _, forbidden := range []string{
 		"os.Lstat", "filepath.EvalSymlinks", "diagnosticmodel.Finalize", "time.Since", "PhaseTimingsMS[",
+		"func runAcquire", "func runPreparedAcquire", "ParseSecurityPostureOptions",
 	} {
 		if strings.Contains(string(adapter), forbidden) {
 			t.Errorf("acquisition composition adapter contains workflow implementation %q", forbidden)
@@ -388,7 +398,7 @@ func TestGenericCommandAndSecretPublicationStayBehindInternalBoundaries(t *testi
 	}
 	for _, forbidden := range []string{
 		"acquisitionmodel.ParseOptions", "diagnosticmodel.ApplyOutcome", "DiagnosticsPermitSecrets(",
-		"DatabaseCredential = nil", "ImageKeys = nil",
+		"DatabaseCredential = nil", "ImageKeys = nil", "func securityPostureRevalidationResponse",
 	} {
 		if strings.Contains(string(rootCommand), forbidden) {
 			t.Errorf("root command contains generic workflow/publication implementation %q", forbidden)

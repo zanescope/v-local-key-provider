@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	acquisitionmodel "github.com/zanescope/v-local-key-provider/internal/acquisition"
 )
 
 func TestPackageVersionMatchesRuntimeVersion(t *testing.T) {
@@ -74,22 +76,6 @@ func TestDecodeSecurityPostureRevalidationRequiresAFreshRequest(t *testing.T) {
 	payload, _ = json.Marshal(base)
 	if _, err := decodeRequestData(payload); err == nil {
 		t.Fatal("security posture revalidation accepted an old acquisition session")
-	}
-}
-
-func TestSecurityPostureRevalidationNeverAcquiresCredentials(t *testing.T) {
-	request := acquireRequest{Protocol: protocolName, RequestID: "posture-1"}
-	options := acquireOptions{Database: true, Media: true}
-	enabled := securityPostureRevalidationResponse(request, options, "darwin", "sip_enabled_verified")
-	if enabled.Diagnostics.ResultCode != "complete" || enabled.Diagnostics.WorkflowStatus != "terminal" ||
-		enabled.Diagnostics.NextAction != "none" || enabled.Diagnostics.ActionStage != "security_posture_revalidation" ||
-		len(enabled.DatabaseKeys) != 0 || enabled.DatabaseCredential != nil || enabled.ImageKeys != nil || len(enabled.CatalogEntries) != 0 {
-		t.Fatalf("enabled SIP revalidation performed acquisition work: %+v", enabled)
-	}
-	disabled := securityPostureRevalidationResponse(request, options, "darwin", "sip_disabled_verified")
-	if disabled.Diagnostics.ResultCode != "action_required" || disabled.Diagnostics.WorkflowStatus != "waiting_action" ||
-		disabled.Diagnostics.NextAction != "reenable_sip" || disabled.Diagnostics.SecurityPostureStatus != "restoration_required" {
-		t.Fatalf("disabled SIP revalidation did not preserve the user action: %+v", disabled.Diagnostics)
 	}
 }
 
@@ -197,24 +183,6 @@ func TestNewDiagnosticsProvidesStableProtocolDefaults(t *testing.T) {
 	}
 }
 
-func TestApplyFixedDiagnosticOutcomePreservesStableProtocolState(t *testing.T) {
-	diag := newDiagnostics("darwin", []string{"database"})
-	diag.SecurityPostureStatus = "sip_enabled_verified"
-	diag.ShadowRouteStatus = "unavailable_in_build"
-
-	applyFixedDiagnosticOutcome(&diag, "complete", "terminal", "none")
-
-	if diag.ResultCode != "complete" || diag.WorkflowStatus != "terminal" || diag.NextAction != "none" {
-		t.Fatalf("fixed diagnostic outcome was not applied: %+v", diag)
-	}
-	if diag.SecurityPostureStatus != "sip_enabled_verified" || diag.ShadowRouteStatus != "unavailable_in_build" {
-		t.Fatalf("fixed diagnostic outcome discarded platform state: %+v", diag)
-	}
-	if diag.BlockingReasons == nil || len(diag.BlockingReasons) != 0 {
-		t.Fatalf("empty blocking reasons must remain a non-nil protocol collection: %#v", diag.BlockingReasons)
-	}
-}
-
 func TestRunAcquireReturnsDeadlineDiagnosticsAfterDiscoveryBudget(t *testing.T) {
 	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
 		t.Skip("platform acquisition is unsupported")
@@ -228,10 +196,10 @@ func TestRunAcquireReturnsDeadlineDiagnosticsAfterDiscoveryBudget(t *testing.T) 
 	if err := os.MkdirAll(db, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	result, err := runAcquire(acquireOptions{
+	result, err := acquisitionmodel.Run(acquireOptions{
 		AccountDir: account, DBDir: db, Database: true,
 		Budget: newBudget(time.Now().Add(-time.Second), 1).value,
-	})
+	}, acquisitionWorkflowRuntime())
 	if err != nil {
 		t.Fatalf("expired discovery should return diagnostics, got error: %v", err)
 	}

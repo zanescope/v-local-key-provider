@@ -69,12 +69,6 @@ func commandWorkflowRuntime() commandmodel.Runtime {
 	}
 }
 
-func securityPostureRevalidationResponse(request acquireRequest, options acquireOptions, platform, posture string) response {
-	return commandmodel.SecurityPostureResponse(
-		request, options, platform, posture, platformDiagnosticDefaults(),
-	)
-}
-
 func executeSecurityPostureRevalidation(request acquireRequest) (response, error) {
 	return commandmodel.ExecuteSecurityPostureRevalidation(request, commandWorkflowRuntime())
 }

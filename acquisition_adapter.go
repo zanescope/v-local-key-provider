@@ -1,8 +1,6 @@
 package provider
 
 import (
-	"time"
-
 	acquisitionmodel "github.com/zanescope/v-local-key-provider/internal/acquisition"
 	catalogmodel "github.com/zanescope/v-local-key-provider/internal/catalog"
 	credentialmodel "github.com/zanescope/v-local-key-provider/internal/credential"
@@ -94,10 +92,6 @@ func optionsFromRequest(request acquireRequest) (acquireOptions, error) {
 	return acquisitionmodel.ParseOptions(request, acquisitionOptionPolicy())
 }
 
-func securityPostureRevalidationOptions(request acquireRequest) (acquireOptions, error) {
-	return acquisitionmodel.ParseSecurityPostureOptions(request, acquisitionOptionPolicy())
-}
-
 func acquisitionWorkflowRuntime() acquisitionmodel.WorkflowRuntime {
 	return acquisitionmodel.WorkflowRuntime{
 		DiscoverTargets: func(dbDir string, remaining workbudget.Budget, catalogKey []byte) (acquisitionmodel.Targets, error) {
@@ -113,15 +107,4 @@ func acquisitionWorkflowRuntime() acquisitionmodel.WorkflowRuntime {
 		ProfileSummaries:        profileSummaries,
 		ClearSensitive:          zeroBytes,
 	}
-}
-
-func runAcquire(options acquireOptions) (response, error) {
-	return acquisitionmodel.Run(options, acquisitionWorkflowRuntime())
-}
-
-func runPreparedAcquire(options acquireOptions, targets databaseTargets, media mediaEvidence, started time.Time) (response, error) {
-	runtime := acquisitionWorkflowRuntime()
-	// Resolve the mutable test/platform seam at call time.
-	runtime.Driver = platformDriver
-	return acquisitionmodel.RunPrepared(options, targets, media, started, runtime)
 }

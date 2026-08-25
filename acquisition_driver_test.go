@@ -27,9 +27,9 @@ func TestPreparedAcquisitionUsesPlatformDriverSeam(t *testing.T) {
 			DatabaseID: "database", RelativePath: "message.db", RequiredForKeyCoverage: true,
 		}}},
 	}
-	result, err := runPreparedAcquire(acquireOptions{
+	result, err := acquisitionmodel.RunPrepared(acquireOptions{
 		AccountDir: t.TempDir(), Database: true, Budget: unlimitedBudget().value, CatalogKey: bytes.Repeat([]byte{0x5a}, 32),
-	}, targets, mediaEvidence{}, time.Now())
+	}, targets, mediaEvidence{}, time.Now(), acquisitionWorkflowRuntime())
 	if err != nil {
 		t.Fatal(err)
 	}
