@@ -200,27 +200,3 @@ func runPreparedAcquire(options acquireOptions, targets databaseTargets, media m
 	result.Diagnostics = diag
 	return result, nil
 }
-
-func missingDatabaseIDs(targets databaseTargets, keys map[string]string) []string {
-	missing := []string{}
-	for _, database := range targets.Catalog.Databases {
-		if !database.RequiredForKeyCoverage {
-			continue
-		}
-		if _, found := keys[database.RelativePath]; !found {
-			missing = append(missing, database.DatabaseID)
-		}
-	}
-	return missing
-}
-
-func requestedScopes(database, media bool) []string {
-	result := make([]string, 0, 2)
-	if database {
-		result = append(result, "database")
-	}
-	if media {
-		result = append(result, "media")
-	}
-	return result
-}

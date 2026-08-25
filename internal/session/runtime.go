@@ -59,7 +59,6 @@ type Runtime struct {
 	NewDiagnostics          func([]string) diagnosticmodel.Diagnostics
 	ApplyDiagnosticDefaults func(*diagnosticmodel.Diagnostics)
 	Driver                  acquisitionmodel.PlatformDriver
-	FinalizeDiagnostics     func(*diagnosticmodel.Diagnostics, acquisitionmodel.Targets, protocolmodel.Response, Options)
 	CatalogHMAC             func([]byte, ...string) string
 	ProfileSummaries        func() []providercrypto.Summary
 	ClearSensitive          func([]byte)
@@ -116,9 +115,6 @@ func (runtime Runtime) validatePrepare() error {
 func (runtime Runtime) validateAcquire() error {
 	if runtime.Driver == nil {
 		return errors.New("session runtime 缺少 platform driver")
-	}
-	if runtime.FinalizeDiagnostics == nil {
-		return errors.New("session runtime 缺少 diagnostic finalizer")
 	}
 	return nil
 }

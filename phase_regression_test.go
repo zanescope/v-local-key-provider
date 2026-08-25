@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	diagnosticmodel "github.com/zanescope/v-local-key-provider/internal/diagnostics"
 )
 
 func TestPhase0CatalogProofChangesWhenPhysicalFileChanges(t *testing.T) {
@@ -155,18 +157,18 @@ func TestDiagnosticOutcomeRulePriorityIsExplicitAndUnique(t *testing.T) {
 		"sip_route_unresolved", "process_access_denied", "validator_conflict", "candidate_ambiguous",
 		"deadline_exhausted", "database_targets_not_found", "partial_default",
 	}
-	if len(diagnosticOutcomeRules) != len(expected) {
-		t.Fatalf("diagnostic rule count changed without updating the priority contract: %d", len(diagnosticOutcomeRules))
+	rules := diagnosticmodel.OutcomeRules()
+	if len(rules) != len(expected) {
+		t.Fatalf("diagnostic rule count changed without updating the priority contract: %d", len(rules))
 	}
 	seen := map[string]bool{}
-	for index, rule := range diagnosticOutcomeRules {
-		if rule.name != expected[index] || rule.name == "" || seen[rule.name] {
-			t.Fatalf("diagnostic rule priority/name is invalid at %d: %q", index, rule.name)
+	for index, rule := range rules {
+		if rule.Name != expected[index] || rule.Name == "" || seen[rule.Name] {
+			t.Fatalf("diagnostic rule priority/name is invalid at %d: %q", index, rule.Name)
 		}
-		seen[rule.name] = true
+		seen[rule.Name] = true
 	}
-	context := diagnosticDecisionContext{options: acquireOptions{budget: unlimitedBudget()}}
-	if !diagnosticOutcomeRules[len(diagnosticOutcomeRules)-1].matches(context) {
+	if !rules[len(rules)-1].Matches(diagnosticmodel.DecisionContext{}) {
 		t.Fatal("diagnostic rule list has no unconditional final rule")
 	}
 }

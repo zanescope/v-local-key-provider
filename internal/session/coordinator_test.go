@@ -73,23 +73,6 @@ func (fixture *coordinatorFixture) runtime() Runtime {
 				DatabaseKeys: map[string]string{"message.db": "secret"},
 			}, diagnosticmodel.New("test", []string{"database"}, "verified"), nil
 		}),
-		FinalizeDiagnostics: func(
-			diag *diagnosticmodel.Diagnostics,
-			targets acquisitionmodel.Targets,
-			result protocolmodel.Response,
-			options Options,
-		) {
-			diag.RequestedScopes = requestedScopes(options.Database, options.Media)
-			diag.DatabaseCount = len(targets.Catalog.Databases)
-			diag.RequiredDatabaseCount = targets.Count
-			diag.MatchedDatabaseCount = len(result.DatabaseKeys)
-			diag.MissingDatabaseIDs = missingDatabaseIDs(targets, result.DatabaseKeys)
-			diag.MissingDatabaseCount = len(diag.MissingDatabaseIDs)
-			diag.DatabaseTargetStatus = "present"
-			diag.DatabaseCoverageStatus = "complete"
-			diag.TargetBindingStatus = "hmac_verified"
-			applyFixedOutcome(diag, "complete", "terminal", "none")
-		},
 		CatalogHMAC:      func([]byte, ...string) string { return "binding" },
 		ClearSensitive:   clearBytes,
 		ConfigStatusRank: func(string) int { return 0 },

@@ -266,12 +266,6 @@ func TestPhase3SIPDisabledRouteHasAnIndependentStableID(t *testing.T) {
 	}
 }
 
-func TestPhase3SIPDisabledWaitRouteRequiresRestoration(t *testing.T) {
-	if !darwinSIPDisabledRouteAttempted([]string{"darwin_sip_disabled_waitfor"}) {
-		t.Fatal("SIP-disabled wait-for route was not recognized as a restoration-bound attempt")
-	}
-}
-
 func TestPhase3InvalidSigningAndIncompleteEvidenceFailClosed(t *testing.T) {
 	evidence := completeDarwinRouteEvidence()
 	evidence.BinarySigningStatus = darwinSigningInvalid

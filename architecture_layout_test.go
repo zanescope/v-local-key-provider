@@ -267,3 +267,48 @@ func TestSessionWorkflowImplementationStaysBehindInternalBoundary(t *testing.T) 
 		}
 	}
 }
+
+func TestDiagnosticFinalizationStaysBehindInternalBoundary(t *testing.T) {
+	for _, name := range []string{"diagnostic_finalize.go", "diagnostic_outcome.go"} {
+		if _, err := os.Stat(name); err == nil || !os.IsNotExist(err) {
+			t.Errorf("diagnostic finalization implementation returned to the Provider root: %s", name)
+		}
+	}
+	for _, name := range []string{"schema.go", "outcome.go", "finalize.go"} {
+		if _, err := os.Stat(filepath.Join("internal", "diagnostics", name)); err != nil {
+			t.Errorf("internal diagnostic implementation is missing %s: %v", name, err)
+		}
+	}
+
+	entries, err := os.ReadDir(filepath.Join("internal", "diagnostics"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := token.NewFileSet()
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join("internal", "diagnostics", name)
+		parsed, err := parser.ParseFile(files, path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Errorf("cannot parse %s: %v", path, err)
+			continue
+		}
+		for _, imported := range parsed.Imports {
+			value, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				t.Errorf("cannot decode import in %s: %v", path, err)
+				continue
+			}
+			switch value {
+			case "github.com/zanescope/v-local-key-provider",
+				"github.com/zanescope/v-local-key-provider/internal/acquisition",
+				"github.com/zanescope/v-local-key-provider/internal/protocol",
+				"github.com/zanescope/v-local-key-provider/internal/session":
+				t.Errorf("%s imports orchestration layer %q", path, value)
+			}
+		}
+	}
+}

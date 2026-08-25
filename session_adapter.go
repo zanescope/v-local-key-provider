@@ -64,13 +64,10 @@ func acquisitionSessionRuntime() sessionmodel.Runtime {
 		},
 		ApplyDiagnosticDefaults: applyPlatformDiagnosticDefaults,
 		Driver:                  sessionPlatformDriver{},
-		FinalizeDiagnostics: func(diag *diagnosticmodel.Diagnostics, targets acquisitionmodel.Targets, result protocolmodel.Response, options sessionmodel.Options) {
-			finalizeDiagnostics(diag, targets, result, acquireOptionsFromSession(options))
-		},
-		CatalogHMAC:      catalogHMAC,
-		ProfileSummaries: profileSummaries,
-		ClearSensitive:   zeroBytes,
-		ConfigStatusRank: windowsConfigStatusRank,
+		CatalogHMAC:             catalogHMAC,
+		ProfileSummaries:        profileSummaries,
+		ClearSensitive:          zeroBytes,
+		ConfigStatusRank:        windowsConfigStatusRank,
 	}
 }
 

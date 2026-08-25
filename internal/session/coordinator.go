@@ -12,30 +12,6 @@ import (
 	protocolmodel "github.com/zanescope/v-local-key-provider/internal/protocol"
 )
 
-func requestedScopes(database, media bool) []string {
-	result := make([]string, 0, 2)
-	if database {
-		result = append(result, "database")
-	}
-	if media {
-		result = append(result, "media")
-	}
-	return result
-}
-
-func missingDatabaseIDs(targets acquisitionmodel.Targets, keys map[string]string) []string {
-	missing := []string{}
-	for _, database := range targets.Catalog.Databases {
-		if !database.RequiredForKeyCoverage {
-			continue
-		}
-		if _, found := keys[database.RelativePath]; !found {
-			missing = append(missing, database.DatabaseID)
-		}
-	}
-	return missing
-}
-
 func applyFixedOutcome(diag *diagnosticmodel.Diagnostics, resultCode, workflowStatus, nextAction string, reasons ...string) {
 	diagnosticmodel.ApplyOutcome(diag, diagnosticmodel.FixedOutcome(
 		diagnosticmodel.DecisionContext{Diagnostics: *diag},
@@ -91,10 +67,10 @@ func (coordinator *Coordinator) prepare(request protocolmodel.AcquireRequest, en
 		return protocolmodel.Response{}, err
 	}
 
-	diag := coordinator.runtime.NewDiagnostics(requestedScopes(options.Database, options.Media))
+	diag := coordinator.runtime.NewDiagnostics(diagnosticmodel.RequestedScopes(options.Database, options.Media))
 	applyFixedOutcome(&diag, "partial", "running", "none")
 	diag.MissingDatabaseCount = targets.Count
-	diag.MissingDatabaseIDs = missingDatabaseIDs(targets, nil)
+	diag.MissingDatabaseIDs = diagnosticmodel.MissingDatabaseIDs(targets.Catalog, nil)
 	diag.DatabaseCount = len(targets.Catalog.Databases)
 	diag.RequiredDatabaseCount = targets.Count
 	diag.SessionID = id

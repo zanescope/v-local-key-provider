@@ -133,9 +133,8 @@ func CanonicalScopes(scopes []string) []string {
 	return result
 }
 
-// New establishes collection/map invariants shared by every platform. Platform
-// route defaults remain in the platform adapter because they depend on build
-// tags and release policy.
+// New establishes collection/map invariants shared by every platform. Use
+// NewWithPlatformDefaults when composition-owned platform facts are available.
 func New(platform string, scopes []string, securityPostureStatus string) Diagnostics {
 	return Diagnostics{
 		Platform: platform, RequestedScopes: CanonicalScopes(scopes),

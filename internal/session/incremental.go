@@ -75,7 +75,7 @@ func (coordinator *Coordinator) runIncremental(
 			return protocolmodel.Response{}, err
 		}
 	} else {
-		diag = coordinator.runtime.NewDiagnostics(requestedScopes(options.Database, options.Media))
+		diag = coordinator.runtime.NewDiagnostics(diagnosticmodel.RequestedScopes(options.Database, options.Media))
 	}
 
 	merged := MergeResults(existing, next)
@@ -86,10 +86,14 @@ func (coordinator *Coordinator) runIncremental(
 	}
 	diag.PhaseTimingsMS["total"] = diag.ElapsedMS
 	diag.BudgetExhausted = options.Budget.Expired()
-	if coordinator.runtime.FinalizeDiagnostics == nil {
-		return protocolmodel.Response{}, errors.New("session runtime 缺少 diagnostic finalizer")
-	}
-	coordinator.runtime.FinalizeDiagnostics(&diag, fullTargets, merged, options)
+	coordinator.runtime.ApplyDiagnosticDefaults(&diag)
+	diagnosticmodel.Finalize(&diag, diagnosticmodel.FinalizeInput{
+		Catalog: fullTargets.Catalog, RequiredDatabaseCount: fullTargets.Count,
+		DatabaseKeys: merged.DatabaseKeys, DatabaseCredential: merged.DatabaseCredential,
+		ImageKeysPresent:  merged.ImageKeys != nil,
+		DatabaseRequested: options.Database, MediaRequested: options.Media,
+		BudgetExpired: options.Budget.Expired(),
+	})
 	merged.CatalogID = fullTargets.Catalog.CatalogID
 	merged.CatalogEntries = append(merged.CatalogEntries[:0:0], fullTargets.Catalog.Databases...)
 	if merged.DatabaseCredential != nil {
