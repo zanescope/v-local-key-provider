@@ -137,6 +137,30 @@ func validateRuntimeComponent(role string) error {
 	return verifyWindowsAuthenticode(executable)
 }
 
+func validateAcquisitionClientPath(path string) (string, error) {
+	absolute, err := filepath.Abs(strings.TrimSpace(path))
+	if err != nil || strings.TrimSpace(path) == "" {
+		return "", errors.New("daemon client path is invalid")
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return "", errors.New("daemon client path is unavailable")
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.Mode().IsRegular() {
+		return "", errors.New("daemon client is not a regular executable")
+	}
+	if releaseBuild() {
+		if !strings.EqualFold(filepath.Base(resolved), "v-local-cli.exe") {
+			return "", errors.New("release daemon client name is not fixed")
+		}
+		if err := verifyWindowsAuthenticode(resolved); err != nil {
+			return "", errors.New("release daemon client signature is invalid")
+		}
+	}
+	return resolved, nil
+}
+
 func acquisitionDaemonRuntimeContext(advertisedProviderPath string) (bool, string, error) {
 	if advertisedProviderPath != "" {
 		return false, "", errors.New("Windows acquisition daemon cannot advertise a helper launcher")

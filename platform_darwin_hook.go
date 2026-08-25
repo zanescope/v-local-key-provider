@@ -17,6 +17,8 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	daemonmodel "github.com/zanescope/v-local-key-provider/internal/daemon"
 )
 
 const darwinHookWait = 12 * time.Second
@@ -50,7 +52,7 @@ func (buffer *darwinHookOutputBuffer) zero() {
 
 func darwinProcessExecutable(process darwinProcess) string {
 	if process.pid > 0 {
-		if executable, err := darwinProcessExecutablePath(process.pid); err == nil && filepath.IsAbs(executable) {
+		if executable, err := daemonmodel.ProcessExecutablePath(uint32(process.pid)); err == nil && filepath.IsAbs(executable) {
 			return filepath.Clean(executable)
 		}
 	}

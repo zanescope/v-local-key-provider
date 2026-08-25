@@ -1,6 +1,6 @@
 //go:build !windows
 
-package provider
+package daemon
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-func validateDaemonDirectorySecurity(path string) error {
+func validateDirectorySecurity(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
 		return err

@@ -4,6 +4,29 @@
 
 审计条目按时间倒序记录。每条结论只对其标明的代码基线成立；后续复核可以取代旧结论，但不得静默改写历史。
 
+## 2026-08-25 D-1 daemon 垂直切片续作
+
+本轮以本地全绿 checkpoint `c71cc37`（`refactor: complete phase 0-5 review checkpoint`）为起点。审计落款写入前的代码 tree 为 `22cf0c10f220ea0ba4a341d55ffa0ea9c341c480`（183 个非忽略文件）；其后只追加本节记录，没有再修改生产代码或测试。
+
+### 实际迁移结果
+
+- 新增 `internal/daemon`，统一拥有 daemon 命令帧、endpoint 发布与清理、连接认证时限、server idle/shutdown 生命周期、stdio 入口、Darwin Unix socket、Windows named pipe、peer PID/用户/进程镜像读取，以及 Unix owner/mode 和 Windows owner/DACL 校验。
+- root `daemon_adapter.go` 只注入 session backend、runtime component 身份、release CLI 信任、link/reparse 与 canonical path policy、敏感内存登记/清零；`internal/daemon` 不 import Provider 根包，也不认识 `acquisitionSessionStore`、`candidateCollector`、`databaseTargets` 或 `acquireOptions`。
+- Provider 的 session store 通过窄 `Backend` 函数字段注入，具体类型保持私有；helper role 在创建 backend 之前完成 runtime identity 复核。Darwin/Windows one-shot 与 hook 调用方改用 daemon 包拥有的进程镜像查询，不保留平行 native 实现。
+- 根目录生产 Go 文件由 78 个降至 71 个；daemon 生产文件由 10 个完整实现收敛为 `daemon_adapter.go` 与两个 build-tagged helper launch wiring 文件。新增架构回归，禁止 daemon server/transport/security 实现重新回流根目录或 `internal/daemon` 反向 import Provider。
+
+### 本轮验证
+
+| 检查 | 结果 |
+| --- | --- |
+| WSL Go | `go test ./... -count=1`、`go vet ./...` 全包通过。 |
+| race | `go test -race ./internal/daemon ./internal/session . -count=1` 通过。 |
+| Windows 原生 | 固定工作区路径生成并运行 root 与 `internal/daemon` 测试二进制，均 `PASS`；`go vet ./...` 通过。首次由系统 Temp 执行 daemon 测试时被 Application Control 拦截，固定路径复验排除了断言失败。 |
+| 跨平台 build tags | Darwin amd64/arm64（`CGO_ENABLED=0`）与 Windows/ARM64 全包编译通过；这是编译检查，不冒充 Darwin cgo 或真实目标执行。 |
+| npm / 静态 | Provider npm 13/13；`gofmt -l`、`git diff --check` 与架构依赖检查通过。 |
+
+这次结构续作不解除空生产 registry、Darwin cgo/真机、最终签名件、notarization 或 Trusted Publishing 门禁。下一轮如继续收敛根目录，应先建立 `internal/acquisition` 的模型与 platform driver seam，再整体迁移 collector/discovery/validator；不得按单文件搬迁制造新的 root adapter 网。
+
 ## 2026-08-25 D-1 最终 wiring 与 native 边界续作
 
 本节取代下一节“尚未迁移的边界”现状判断，但保留其第二阶段历史记录。

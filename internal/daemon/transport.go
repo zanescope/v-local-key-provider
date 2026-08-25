@@ -1,4 +1,4 @@
-package provider
+package daemon
 
 import (
 	"net"
@@ -9,7 +9,7 @@ type deadlineListener interface {
 	SetDeadline(time.Time) error
 }
 
-func setAcquisitionDaemonListenerDeadline(listener net.Listener, deadline time.Time) {
+func setListenerDeadline(listener net.Listener, deadline time.Time) {
 	if value, ok := listener.(deadlineListener); ok {
 		_ = value.SetDeadline(deadline)
 	}

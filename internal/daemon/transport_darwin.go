@@ -1,6 +1,6 @@
 //go:build darwin
 
-package provider
+package daemon
 
 import (
 	"bytes"
@@ -8,16 +8,15 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/unix"
 )
 
-const darwinDaemonTransport = "darwin_unix"
+const DarwinTransport = "darwin_unix"
 
-func listenAcquisitionDaemon(endpointPath, token string, developmentTCP bool) (net.Listener, string, string, func(), error) {
+func listen(_ Config, endpointPath, token string, developmentTCP bool) (net.Listener, string, string, func(), error) {
 	if developmentTCP {
 		listener, err := net.Listen("tcp4", "127.0.0.1:0")
 		if err != nil {
@@ -39,50 +38,7 @@ func listenAcquisitionDaemon(endpointPath, token string, developmentTCP bool) (n
 		return nil, "", "", func() {}, err
 	}
 	cleanup := func() { _ = os.Remove(socketPath) }
-	return listener, darwinDaemonTransport, socketPath, cleanup, nil
-}
-
-func validateAcquisitionClientPath(path string) (string, error) {
-	absolute, err := filepath.Abs(strings.TrimSpace(path))
-	if err != nil || strings.TrimSpace(path) == "" {
-		return "", errors.New("daemon client path is invalid")
-	}
-	resolved, err := filepath.EvalSymlinks(absolute)
-	if err != nil {
-		return "", errors.New("daemon client path is unavailable")
-	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
-		return "", errors.New("daemon client is not an executable regular file")
-	}
-	if !releaseBuild() {
-		return resolved, nil
-	}
-	client, err := trustedDarwinExecutable(resolved, "v-local-cli")
-	if err != nil {
-		return "", errors.New("release daemon client path is not trusted")
-	}
-	clientIdentity, err := darwinCodeIdentityFor(client, "com.zanescope.v-local-cli", true)
-	if err != nil {
-		return "", errors.New("release daemon client signature is invalid")
-	}
-	current, err := os.Executable()
-	if err != nil {
-		return "", err
-	}
-	current, err = filepathEvalCanonical(current)
-	if err != nil {
-		return "", err
-	}
-	identifier := darwinProviderCodeIdentifier
-	if filepath.Base(current) == darwinHelperName {
-		identifier = darwinHelperCodeIdentifier
-	}
-	currentIdentity, err := darwinCodeIdentityFor(current, identifier, true)
-	if err != nil || currentIdentity.teamID == "" || currentIdentity.teamID != clientIdentity.teamID {
-		return "", errors.New("daemon client and server signing teams do not match")
-	}
-	return client, nil
+	return listener, DarwinTransport, socketPath, cleanup, nil
 }
 
 func darwinPeerIdentity(connection net.Conn) (int, uint32, error) {
@@ -113,7 +69,9 @@ func darwinPeerIdentity(connection net.Conn) (int, uint32, error) {
 	return pid, credentials.Uid, nil
 }
 
-func darwinProcessExecutablePath(pid int) (string, error) {
+// ProcessExecutablePath returns the executable path reported by the Darwin
+// kernel for a concrete process instance.
+func ProcessExecutablePath(pid uint32) (string, error) {
 	const kernProcArgs2 = 49
 	mib := []int32{unix.CTL_KERN, kernProcArgs2, int32(pid)}
 	var size uintptr
@@ -136,15 +94,15 @@ func darwinProcessExecutablePath(pid int) (string, error) {
 	return filepath.Clean(string(payload[:end])), nil
 }
 
-func verifyAcquisitionDaemonPeer(connection net.Conn, transport, clientPath string) (string, error) {
-	trustedPath, err := validateAcquisitionClientPath(clientPath)
+func verifyPeer(config Config, connection net.Conn, transport, clientPath string) (string, error) {
+	trustedPath, err := config.ValidateClientPath(clientPath)
 	if err != nil {
 		return "", err
 	}
-	if transport == "tcp4-development" && !releaseBuild() {
+	if transport == "tcp4-development" && !config.ReleaseBuild {
 		return "development:" + trustedPath, nil
 	}
-	if transport != darwinDaemonTransport {
+	if transport != DarwinTransport {
 		return "", errors.New("release daemon transport is not a Unix socket")
 	}
 	pid, uid, err := darwinPeerIdentity(connection)
@@ -154,12 +112,12 @@ func verifyAcquisitionDaemonPeer(connection net.Conn, transport, clientPath stri
 	if uid != uint32(os.Geteuid()) {
 		return "", errors.New("Unix peer user does not match the daemon user")
 	}
-	actualPath, err := darwinProcessExecutablePath(pid)
-	if err != nil || !sameCanonicalPath(actualPath, trustedPath) {
+	actualPath, err := ProcessExecutablePath(uint32(pid))
+	if err != nil || !config.SamePath(actualPath, trustedPath) {
 		return "", errors.New("Unix peer image does not match the trusted CLI")
 	}
-	if releaseBuild() {
-		if _, err := validateAcquisitionClientPath(actualPath); err != nil {
+	if config.ReleaseBuild {
+		if _, err := config.ValidateClientPath(actualPath); err != nil {
 			return "", err
 		}
 	}

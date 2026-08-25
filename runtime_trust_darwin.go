@@ -184,6 +184,49 @@ func validateRuntimeComponent(role string) error {
 	return err
 }
 
+func validateAcquisitionClientPath(path string) (string, error) {
+	absolute, err := filepath.Abs(strings.TrimSpace(path))
+	if err != nil || strings.TrimSpace(path) == "" {
+		return "", errors.New("daemon client path is invalid")
+	}
+	resolved, err := filepath.EvalSymlinks(absolute)
+	if err != nil {
+		return "", errors.New("daemon client path is unavailable")
+	}
+	info, err := os.Stat(resolved)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+		return "", errors.New("daemon client is not an executable regular file")
+	}
+	if !releaseBuild() {
+		return resolved, nil
+	}
+	client, err := trustedDarwinExecutable(resolved, "v-local-cli")
+	if err != nil {
+		return "", errors.New("release daemon client path is not trusted")
+	}
+	clientIdentity, err := darwinCodeIdentityFor(client, "com.zanescope.v-local-cli", true)
+	if err != nil {
+		return "", errors.New("release daemon client signature is invalid")
+	}
+	current, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	current, err = filepathEvalCanonical(current)
+	if err != nil {
+		return "", err
+	}
+	identifier := darwinProviderCodeIdentifier
+	if filepath.Base(current) == darwinHelperName {
+		identifier = darwinHelperCodeIdentifier
+	}
+	currentIdentity, err := darwinCodeIdentityFor(current, identifier, true)
+	if err != nil || currentIdentity.teamID == "" || currentIdentity.teamID != clientIdentity.teamID {
+		return "", errors.New("daemon client and server signing teams do not match")
+	}
+	return client, nil
+}
+
 func acquisitionDaemonRuntimeContext(advertisedProviderPath string) (bool, string, error) {
 	if advertisedProviderPath == "" {
 		return false, "", validateRuntimeComponent("provider")

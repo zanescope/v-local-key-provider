@@ -1,6 +1,6 @@
 //go:build windows
 
-package provider
+package daemon
 
 import (
 	"context"
@@ -14,14 +14,15 @@ import (
 	"time"
 	"unsafe"
 
+	protocolmodel "github.com/zanescope/v-local-key-provider/internal/protocol"
 	"golang.org/x/sys/windows"
 )
 
-const windowsDaemonTransport = "windows_named_pipe"
+const WindowsTransport = "windows_named_pipe"
 
 type namedPipeAddress string
 
-func (value namedPipeAddress) Network() string { return windowsDaemonTransport }
+func (value namedPipeAddress) Network() string { return WindowsTransport }
 func (value namedPipeAddress) String() string  { return string(value) }
 
 type namedPipeTimeoutError struct{}
@@ -89,7 +90,7 @@ func createNamedPipeHandle(path string, security *windows.SECURITY_DESCRIPTOR, f
 	}
 	return windows.CreateNamedPipe(name, flags,
 		windows.PIPE_TYPE_BYTE|windows.PIPE_READMODE_BYTE|windows.PIPE_WAIT|windows.PIPE_REJECT_REMOTE_CLIENTS,
-		windows.PIPE_UNLIMITED_INSTANCES, acquisitionDaemonResponseMax, maxRequestBytes, 5000, attributes)
+		windows.PIPE_UNLIMITED_INSTANCES, protocolmodel.MaxResponseBytes, protocolmodel.MaxRequestBytes, 5000, attributes)
 }
 
 func newNamedPipeListener(path string) (*namedPipeListener, error) {
@@ -244,7 +245,7 @@ func (value *namedPipeListener) SetDeadline(deadline time.Time) error {
 	return nil
 }
 
-func listenAcquisitionDaemon(_ string, token string, developmentTCP bool) (net.Listener, string, string, func(), error) {
+func listen(_ Config, _ string, token string, developmentTCP bool) (net.Listener, string, string, func(), error) {
 	if developmentTCP {
 		listener, err := net.Listen("tcp4", "127.0.0.1:0")
 		if err != nil {
@@ -257,34 +258,11 @@ func listenAcquisitionDaemon(_ string, token string, developmentTCP bool) (net.L
 	if err != nil {
 		return nil, "", "", func() {}, err
 	}
-	return listener, windowsDaemonTransport, path, func() {}, nil
+	return listener, WindowsTransport, path, func() {}, nil
 }
 
-func validateAcquisitionClientPath(path string) (string, error) {
-	absolute, err := filepath.Abs(strings.TrimSpace(path))
-	if err != nil || strings.TrimSpace(path) == "" {
-		return "", errors.New("daemon client path is invalid")
-	}
-	resolved, err := filepath.EvalSymlinks(absolute)
-	if err != nil {
-		return "", errors.New("daemon client path is unavailable")
-	}
-	info, err := os.Stat(resolved)
-	if err != nil || !info.Mode().IsRegular() {
-		return "", errors.New("daemon client is not a regular executable")
-	}
-	if releaseBuild() {
-		if !strings.EqualFold(filepath.Base(resolved), "v-local-cli.exe") {
-			return "", errors.New("release daemon client name is not fixed")
-		}
-		if err := verifyWindowsAuthenticode(resolved); err != nil {
-			return "", errors.New("release daemon client signature is invalid")
-		}
-	}
-	return resolved, nil
-}
-
-func windowsProcessPath(pid uint32) (string, error) {
+// ProcessExecutablePath returns the image path of a concrete Windows process.
+func ProcessExecutablePath(pid uint32) (string, error) {
 	process, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
 		return "", err
@@ -298,7 +276,7 @@ func windowsProcessPath(pid uint32) (string, error) {
 	return filepath.Clean(windows.UTF16ToString(buffer[:size])), nil
 }
 
-func windowsProcessUserMatchesCurrent(pid uint32) (bool, error) {
+func processUserMatchesCurrent(pid uint32) (bool, error) {
 	process, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
 		return false, err
@@ -320,15 +298,15 @@ func windowsProcessUserMatchesCurrent(pid uint32) (bool, error) {
 	return peerUser.User.Sid.Equals(currentUser.User.Sid), nil
 }
 
-func verifyAcquisitionDaemonPeer(connection net.Conn, transport, clientPath string) (string, error) {
-	trustedPath, err := validateAcquisitionClientPath(clientPath)
+func verifyPeer(config Config, connection net.Conn, transport, clientPath string) (string, error) {
+	trustedPath, err := config.ValidateClientPath(clientPath)
 	if err != nil {
 		return "", err
 	}
-	if transport == "tcp4-development" && !releaseBuild() {
+	if transport == "tcp4-development" && !config.ReleaseBuild {
 		return "development:" + strings.ToLower(trustedPath), nil
 	}
-	if transport != windowsDaemonTransport {
+	if transport != WindowsTransport {
 		return "", errors.New("release daemon transport is not a Windows named pipe")
 	}
 	peer, ok := connection.(interface{ acquisitionPeerPID() uint32 })
@@ -336,23 +314,24 @@ func verifyAcquisitionDaemonPeer(connection net.Conn, transport, clientPath stri
 		return "", errors.New("named pipe peer PID is unavailable")
 	}
 	peerPID := peer.acquisitionPeerPID()
-	sameUser, err := windowsProcessUserMatchesCurrent(peerPID)
+	sameUser, err := processUserMatchesCurrent(peerPID)
 	if err != nil || !sameUser {
 		return "", errors.New("named pipe peer user does not match the daemon user")
 	}
-	actualPath, err := windowsProcessPath(peerPID)
-	if err != nil || !sameCanonicalPath(actualPath, trustedPath) {
+	actualPath, err := ProcessExecutablePath(peerPID)
+	if err != nil || !config.SamePath(actualPath, trustedPath) {
 		return "", errors.New("named pipe peer image does not match the trusted CLI")
 	}
-	if releaseBuild() {
-		if _, err := validateAcquisitionClientPath(actualPath); err != nil {
+	if config.ReleaseBuild {
+		if _, err := config.ValidateClientPath(actualPath); err != nil {
 			return "", err
 		}
 	}
 	return "windows:" + strings.ToLower(filepath.Clean(trustedPath)), nil
 }
 
-func dialNamedPipeContext(ctx context.Context, path string) (net.Conn, error) {
+// DialNamedPipeContext connects to a local daemon named pipe with cancellation.
+func DialNamedPipeContext(ctx context.Context, path string) (net.Conn, error) {
 	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, err

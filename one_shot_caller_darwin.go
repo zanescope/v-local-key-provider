@@ -6,13 +6,15 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+
+	daemonmodel "github.com/zanescope/v-local-key-provider/internal/daemon"
 )
 
 func validateOneShotCaller(helperMode bool) error {
 	if !releaseBuild() {
 		return nil
 	}
-	parentPath, err := darwinProcessExecutablePath(os.Getppid())
+	parentPath, err := daemonmodel.ProcessExecutablePath(uint32(os.Getppid()))
 	if err != nil {
 		return errors.New("one-shot caller process identity is unavailable")
 	}

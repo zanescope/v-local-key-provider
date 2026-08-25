@@ -1,6 +1,6 @@
 //go:build windows
 
-package provider
+package daemon
 
 import (
 	"errors"
@@ -9,10 +9,10 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// validateDaemonDirectorySecurity 独立验证 endpoint 目录的 owner 和 DACL，
+// validateDirectorySecurity 独立验证 endpoint 目录的 owner 和 DACL，
 // 不依赖调用方曾经正确运行 securePrivateDirectory。只有当前用户和 LocalSystem
 // 可以拥有 allow ACE，且 DACL 必须禁止从父目录继承。
-func validateDaemonDirectorySecurity(path string) error {
+func validateDirectorySecurity(path string) error {
 	descriptor, err := windows.GetNamedSecurityInfo(
 		path, windows.SE_FILE_OBJECT,
 		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION,

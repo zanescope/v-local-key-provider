@@ -5,19 +5,20 @@ package provider
 import (
 	"context"
 	"encoding/json"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	daemonmodel "github.com/zanescope/v-local-key-provider/internal/daemon"
 )
 
 func namedPipeDaemonExchange(t *testing.T, endpoint acquisitionDaemonEndpoint, token, command string) acquisitionDaemonResponse {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
-	connection, err := dialNamedPipeContext(ctx, endpoint.Address)
+	connection, err := daemonmodel.DialNamedPipeContext(ctx, endpoint.Address)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,7 @@ func TestWindowsNamedPipeBindsPeerImageBeforeTokenAuthentication(t *testing.T) {
 	finished := make(chan error, 1)
 	go func() { finished <- serveAcquisitionDaemonForClient(endpointPath, clientPath) }()
 	endpoint := waitForAcquisitionEndpoint(t, endpointPath, finished)
-	if endpoint.Transport != windowsDaemonTransport || endpoint.ClientPath != clientPath {
+	if endpoint.Transport != daemonmodel.WindowsTransport || endpoint.ClientPath != clientPath {
 		t.Fatalf("daemon did not publish a client-bound named pipe endpoint: %+v", endpoint)
 	}
 	guessed := namedPipeDaemonExchange(t, endpoint, strings.Repeat("0", 64), "shutdown")
@@ -67,33 +68,5 @@ func TestWindowsNamedPipeBindsPeerImageBeforeTokenAuthentication(t *testing.T) {
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("named pipe daemon did not stop")
-	}
-}
-
-type peerPIDTestConnection struct {
-	net.Conn
-	pid uint32
-}
-
-func (value peerPIDTestConnection) acquisitionPeerPID() uint32 { return value.pid }
-
-func TestWindowsNamedPipeRejectsSameUserImpostorImage(t *testing.T) {
-	server, client := net.Pipe()
-	defer server.Close()
-	defer client.Close()
-	impostor := filepath.Join(t.TempDir(), "impostor.exe")
-	if err := os.WriteFile(impostor, []byte("not the running CLI"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	_, err := verifyAcquisitionDaemonPeer(peerPIDTestConnection{Conn: server, pid: uint32(os.Getpid())}, windowsDaemonTransport, impostor)
-	if err == nil {
-		t.Fatal("same-user process with a different executable image passed peer verification")
-	}
-}
-
-func TestWindowsNamedPipePeerUserMatchesCurrentProcess(t *testing.T) {
-	matched, err := windowsProcessUserMatchesCurrent(uint32(os.Getpid()))
-	if err != nil || !matched {
-		t.Fatalf("current process user did not match the daemon user: matched=%v err=%v", matched, err)
 	}
 }

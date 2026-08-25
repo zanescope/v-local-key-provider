@@ -90,8 +90,8 @@ func TestPhase5ReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *test
 		"com.zanescope.v-local-key-provider", "com.zanescope.v-local-key-provider.helper",
 		"anchor apple generic", "Provider and helper signing identities do not match", "component owner or write permissions are not trusted",
 	)
-	requireReleaseContractFragments(t, "daemon_transport_darwin.go", "LOCAL_PEERCRED", "os.Geteuid()")
-	requireReleaseContractFragments(t, "daemon_transport_windows.go", "windowsProcessUserMatchesCurrent", "GetTokenUser")
+	requireReleaseContractFragments(t, "internal/daemon/transport_darwin.go", "LOCAL_PEERCRED", "os.Geteuid()")
+	requireReleaseContractFragments(t, "internal/daemon/transport_windows.go", "processUserMatchesCurrent", "GetTokenUser")
 	requireReleaseContractFragments(t, "platform_helper_darwin.go",
 		"releaseBuild()", "V_LOCAL_KEY_PROVIDER_ALLOW_UNVERIFIED_HELPER", "development_override",
 	)
