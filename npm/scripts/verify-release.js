@@ -10,6 +10,7 @@ const packageRoot = path.resolve(__dirname, '..');
 const metadata = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
 const expectedAssets = [
   'v-local-key-provider-windows-amd64.exe',
+  'v-local-key-provider-windows-arm64.exe',
   'v-local-key-provider-darwin-amd64',
   'v-local-key-provider-helper-darwin-amd64',
   'v-local-key-provider-darwin-arm64',

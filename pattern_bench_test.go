@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"crypto/rand"
@@ -7,7 +7,7 @@ import (
 )
 
 // 这些基准量化内存块级扫描各步骤的吞吐，用来判断 darwin 侧把 scanInternalXORKeys
-// 收窄到 image-only（需要给 cgo region 查询加类型信息）是否划算：只有当它相对基线
+// 收窄为仅扫描映像（需要为 cgo 内存区域查询补充类型信息）是否划算：只有当它相对基线
 // collector.scan 明显更贵时才值得改。随机数据不含 0x48 0xba 标记，测的是无命中时的
 // 常态成本；salt 邻域用不在数据里的盐值，测的是最坏情况的全缓冲搜索。
 func benchRandom(n int) []byte {

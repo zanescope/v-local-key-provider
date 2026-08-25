@@ -1,8 +1,9 @@
 //go:build darwin && cgo
 
-package main
+package provider
 
 import (
+	"encoding/hex"
 	"strings"
 	"testing"
 )
@@ -23,14 +24,92 @@ func TestDarwinVersionSupportSelectsMultipleLayouts(t *testing.T) {
 }
 
 func TestDarwinHookPythonSourceUsesArchitectureRegisters(t *testing.T) {
-	x86 := darwinHookPythonSource("amd64", "/tmp/capture")
+	x86 := darwinHookPythonSource("amd64")
 	if !strings.Contains(x86, `"rcx"`) || !strings.Contains(x86, `"r8"`) ||
 		!strings.Contains(x86, `"r9"`) || !strings.Contains(x86, `stack + 8`) {
 		t.Fatalf("x86_64 Python hook does not use ABI-correct registers:\n%s", x86)
 	}
-	arm := darwinHookPythonSource("arm64", "/tmp/capture")
+	arm := darwinHookPythonSource("arm64")
 	if !strings.Contains(arm, `"x3"`) || !strings.Contains(arm, `"x4"`) || !strings.Contains(arm, `"x5"`) || !strings.Contains(arm, `"x6"`) {
 		t.Fatalf("arm64 Python hook does not use expected registers:\n%s", arm)
+	}
+}
+
+func TestDarwinHookPythonSourceCapturesPBKDFArgumentsWithoutSecretFile(t *testing.T) {
+	source := darwinHookPythonSource("arm64")
+	if !strings.Contains(source, "CCKeyDerivationPBKDF") || !strings.Contains(source, "VLOCALPBKDF=") || strings.Contains(source, "open(_capture_path") {
+		t.Fatalf("PBKDF hook or in-memory capture is missing:\n%s", source)
+	}
+	output := "VLOCALPBKDF=2,3,256000,4,32,01020304,aabbccdd\n"
+	captures := parseDarwinPBKDFCaptures(output)
+	if len(captures) != 1 || captures[0].Rounds != 256000 || len(captures[0].Password) != 4 || captures[0].OutputLength != 32 {
+		t.Fatalf("unexpected PBKDF capture: %#v", captures)
+	}
+}
+
+func TestDarwinHookPythonSourceCountsOnlyResolvedBreakpoints(t *testing.T) {
+	source := darwinHookPythonSource("arm64")
+	for _, required := range []string{"GetNumResolvedLocations", "GetNumLocations", "_breakpoint_is_resolved", "vlocal-report-hooks"} {
+		if !strings.Contains(source, required) {
+			t.Fatalf("resolved-breakpoint reporting is missing %q:\n%s", required, source)
+		}
+	}
+	if strings.Contains(source, "sum(1 for breakpoint in breakpoints if breakpoint.IsValid())") {
+		t.Fatal("pending LLDB breakpoints are still reported as installed")
+	}
+}
+
+func TestDarwinPassphraseCaptureRequiresCompleteKDFEvidenceAndTargetSalt(t *testing.T) {
+	salt := strings.Repeat("ab", 16)
+	targets := databaseTargets{pages: []databasePage{{salt: salt}}}
+	valid := darwinPBKDFCapture{Algorithm: 2, PRF: 5, Rounds: v4KDFIterations, OutputLength: 32, Password: make([]byte, 32)}
+	valid.Salt = make([]byte, 16)
+	for index := range valid.Salt {
+		valid.Salt[index] = 0xab
+	}
+	if !darwinPBKDFCaptureMatchesTargetSalt(valid, targets) {
+		t.Fatal("complete target-bound KDF evidence was rejected")
+	}
+	invalidSalt := valid
+	invalidSalt.Salt = append([]byte(nil), valid.Salt...)
+	invalidSalt.Salt[0] ^= 0xff
+	if darwinPBKDFCaptureMatchesTargetSalt(invalidSalt, targets) {
+		t.Fatal("unrelated KDF salt was accepted as target evidence")
+	}
+}
+
+func TestPhase3DarwinRoundsTwoPBKDFCaptureMapsRawKeyUsingXORSalt(t *testing.T) {
+	keyHex := strings.Repeat("37", 32)
+	saltHex := strings.Repeat("a4", 16)
+	page := encryptedDatabasePage(t, keyHex, saltHex)
+	page.path = "message.db"
+	targets := databaseTargets{
+		bySalt: map[string][]string{saltHex: {page.path}}, pages: []databasePage{page}, count: 1,
+	}
+	collector := newCandidateCollector(targets, mediaEvidence{})
+	salt, err := hex.DecodeString(saltHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range salt {
+		salt[index] ^= 0x3a
+	}
+	output := "VLOCALPBKDF=2,5,2,32,32," + keyHex + "," + hex.EncodeToString(salt) + "\n"
+	if captures := consumeDarwinHookCaptures(output, collector); captures != 1 {
+		t.Fatalf("capture count = %d, want 1", captures)
+	}
+	keys, ambiguous := collector.databaseKeys(targets)
+	if ambiguous != 0 || keys[page.path] != keyHex {
+		t.Fatalf("rounds=2 PBKDF evidence was not mapped to the raw database key: keys=%v ambiguous=%d", keys, ambiguous)
+	}
+}
+
+func TestPhase3DarwinUnrelatedPBKDFCaptureIsNotCountedAsUsed(t *testing.T) {
+	targets := databaseTargets{pages: []databasePage{{salt: strings.Repeat("ab", 16)}}}
+	collector := newCandidateCollector(targets, mediaEvidence{})
+	output := "VLOCALPBKDF=2,3,1,4,16,01020304,aabbccdd\n"
+	if captures := consumeDarwinHookCaptures(output, collector); captures != 0 {
+		t.Fatalf("unvalidated PBKDF event was counted as an accepted capture: %d", captures)
 	}
 }
 
@@ -45,12 +124,21 @@ func TestParseDarwinHookPythonKeys(t *testing.T) {
 	}
 }
 
+func TestDarwinHookPythonCountRetainsResolvedStatusAfterPendingReport(t *testing.T) {
+	output := "VLOCALHOOKS=0\nVLOCALHOOKS=3\nVLOCALHOOKS=1\n"
+	if got := darwinHookPythonCount(output); got != 3 {
+		t.Fatalf("resolved hook count = %d, want 3", got)
+	}
+}
+
 func TestDarwinWaitForCommandsArmHookBeforeAttach(t *testing.T) {
 	commands := darwinHookCommandFileWithPython(true, "/Applications/WeChat.app/Contents/MacOS/WeChat", "/tmp/hook.py")
 	target := strings.Index(commands, "target create")
 	load := strings.Index(commands, "command script import")
 	attach := strings.Index(commands, "process attach")
-	if target < 0 || load < target || attach < load {
+	report := strings.Index(commands, "vlocal-report-hooks")
+	resume := strings.Index(commands, "process continue")
+	if target < 0 || load < target || attach < load || report < attach || resume < report {
 		t.Fatalf("wait-for commands do not pre-arm hook before attach:\n%s", commands)
 	}
 }

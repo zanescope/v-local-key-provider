@@ -1,6 +1,8 @@
-package main
+package provider
 
 import (
+	"encoding/hex"
+	"strings"
 	"testing"
 	"time"
 )
@@ -62,6 +64,28 @@ func TestResolveDatabasePassphraseHonorsExpiredBudget(t *testing.T) {
 	}
 	if !collector.databaseScanLimited {
 		t.Fatal("预算耗尽时应标记 databaseScanLimited")
+	}
+}
+
+func TestRecordGlobalPassphraseCanBeCancelledInsideKDF(t *testing.T) {
+	passphraseHex := strings.Repeat("7b", 32)
+	page := encryptedV4PassphrasePage(t, passphraseHex, strings.Repeat("2c", 16))
+	passphrase, err := hex.DecodeString(passphraseHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	collector := newCandidateCollector(
+		databaseTargets{pages: []databasePage{page}, count: 1}, mediaEvidence{}, newBudget(time.Now(), 1),
+	)
+	started := time.Now()
+	if collector.recordGlobalPassphrase(passphrase, "test", false) {
+		t.Fatal("deadline-expired KDF unexpectedly published a candidate")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("KDF cancellation exceeded its bounded overrun: %v", elapsed)
+	}
+	if !collector.kdfBudgetExhausted || !collector.databaseScanLimited {
+		t.Fatal("cancelled KDF did not publish budget exhaustion diagnostics")
 	}
 }
 

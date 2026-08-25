@@ -1,4 +1,4 @@
-package main
+package provider
 
 import "testing"
 
@@ -48,5 +48,12 @@ func TestValidSQLitePageHeaderRejectsWrongReserve(t *testing.T) {
 	body := buildSQLCipherFirstPageBody(0x10, 0x00, 80)
 	if validSQLitePageHeader(body, 48, 16) {
 		t.Fatal("reserve 不匹配时不应通过")
+	}
+}
+
+func TestProfileHeaderValidationRejectsDifferentPageSize(t *testing.T) {
+	body := buildSQLCipherFirstPageBody(0x20, 0x00, 80)
+	if validSQLitePageHeaderForPageSize(body, 4096, 80, 16) {
+		t.Fatal("与 profile 不一致的页大小不应通过")
 	}
 }

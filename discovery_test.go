@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"bytes"
@@ -19,7 +19,7 @@ func TestDiscoverDatabaseTargetsUsesFirst16BytesAsSalt(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, append(salt, bytes.Repeat([]byte{0}, 64)...), 0o600); err != nil {
+	if err := os.WriteFile(path, append(salt, bytes.Repeat([]byte{0}, 4096-len(salt))...), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

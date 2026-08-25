@@ -23,6 +23,10 @@ jobs:
             runner: windows-latest
             platform: windows
             arch: amd64
+          - name: windows-arm64
+            runner: windows-latest
+            platform: windows
+            arch: arm64
           - name: darwin-amd64
             runner: macos-15-intel
             platform: darwin
@@ -52,12 +56,14 @@ jobs:
         if: matrix.platform == 'windows'
         shell: pwsh
         run: |
-          ./scripts/build.ps1
+          ./scripts/build.ps1 -Arch '${{ matrix.arch }}' -Candidate
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item build/windows-amd64/v-local-key-provider.exe dist/v-local-key-provider-windows-amd64.exe
+          Copy-Item 'build/windows-${{ matrix.arch }}/v-local-key-provider.exe' 'dist/v-local-key-provider-windows-${{ matrix.arch }}.exe'
       - name: 构建 macOS 资产
         if: matrix.platform == 'darwin'
         shell: bash
+        env:
+          V_LOCAL_KEY_PROVIDER_BUILD_MODE: candidate
         run: |
           scripts/build-macos.sh "${{ matrix.arch }}"
           mkdir -p dist
@@ -97,6 +103,9 @@ jobs:
         run: |
           (cd dist && for file in *; do test "$file" = checksums.txt || sha256sum "$file"; done) > dist/checksums.txt
           cp dist/checksums.txt npm/checksums.txt
+      - name: 生成候选来源清单
+        shell: bash
+        run: node npm/scripts/candidate-manifest.js create dist dist/candidate-manifest.json "${GITHUB_SHA}" "${GITHUB_RUN_ID}"
       - name: 运行 npm 测试
         working-directory: npm
         run: |

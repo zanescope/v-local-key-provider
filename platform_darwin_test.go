@@ -1,6 +1,6 @@
 //go:build darwin && cgo
 
-package main
+package provider
 
 import "testing"
 
@@ -21,6 +21,31 @@ func TestDarwinProcessMatcherAcceptsMainBundleOnly(t *testing.T) {
 	}
 	if isDarwinWeChatProcess("WeChatAppEx", "/Applications/WeChat.app/Contents/MacOS/WeChatAppEx") {
 		t.Fatal("WeChatAppEx helper should not match")
+	}
+}
+
+func TestDarwinProcessExecutablePreservesSpacesInBundlePathFallback(t *testing.T) {
+	process := darwinProcess{
+		command: "/Users/example/My Applications/WeChat.app/Contents/MacOS/WeChat --flag",
+	}
+	want := "/Users/example/My Applications/WeChat.app/Contents/MacOS/WeChat"
+	if got := darwinProcessExecutable(process); got != want {
+		t.Fatalf("Darwin process executable = %q, want %q", got, want)
+	}
+}
+
+func TestDarwinPipelineDoesNotStopAfterDatabaseWhenMediaIsStillMissing(t *testing.T) {
+	evidence := mediaEvidence{xorCandidates: map[byte]int{0x2a: 1}}
+	collector := newCandidateCollector(databaseTargets{}, evidence, unlimitedBudget())
+	pipeline := darwinAcquisitionPipeline{
+		collector: collector, scanMedia: evidence, needDatabaseScan: false, needMediaScan: true,
+	}
+	if pipeline.satisfied() {
+		t.Fatal("pipeline stopped with requested media evidence still unresolved")
+	}
+	collector.mediaCandidates["0123456789abcdef"] = true
+	if !pipeline.satisfied() {
+		t.Fatal("pipeline did not stop after every requested scope was resolved")
 	}
 }
 

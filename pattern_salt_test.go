@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"bytes"
@@ -8,13 +8,13 @@ import (
 )
 
 // TestScanSaltNeighborhoodRecoversAdjacentRawKey 验证盐值邻域兜底：内存里只把二进制盐
-// 和 raw key 相邻存放、没有 x'<key><salt>' 字面量时，仅靠 scanSaltNeighborhood 也能命中。
+// 和原始密钥相邻存放、没有 x'<key><salt>' 字面量时，仅靠 scanSaltNeighborhood 也能命中。
 func TestScanSaltNeighborhoodRecoversAdjacentRawKey(t *testing.T) {
 	salt := strings.Repeat("ab", 16)
 	key := strings.Repeat("12", 32)
 	targets := databaseTargets{
 		bySalt: map[string][]string{salt: {"contact/contact.db"}},
-		pages:  []databasePage{encryptedDatabasePage(t, key, salt)},
+		pages:  []databasePage{encryptedDatabasePageAt(t, key, salt, "contact/contact.db")},
 		count:  1,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})
@@ -42,7 +42,7 @@ func TestScanSaltNeighborhoodIgnoresDistantKey(t *testing.T) {
 	key := strings.Repeat("34", 32)
 	targets := databaseTargets{
 		bySalt: map[string][]string{salt: {"far.db"}},
-		pages:  []databasePage{encryptedDatabasePage(t, key, salt)},
+		pages:  []databasePage{encryptedDatabasePageAt(t, key, salt, "far.db")},
 		count:  1,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})

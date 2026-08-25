@@ -1,6 +1,6 @@
 //go:build darwin && cgo
 
-package main
+package provider
 
 /*
 #cgo CFLAGS: -D_DARWIN_C_SOURCE
@@ -56,14 +56,14 @@ static kern_return_t z_mach_port_deallocate(mach_port_t port) {
 import "C"
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"strings"
+	"time"
 	"unsafe"
 )
 
@@ -75,50 +75,6 @@ const (
 	darwinTotalScanMax      = uint64(6 * 1024 * 1024 * 1024)
 )
 
-type darwinProcess struct {
-	pid     int
-	name    string
-	command string
-}
-
-func parseDarwinProcessList(output string) []darwinProcess {
-	seen := map[int]bool{}
-	var processes []darwinProcess
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil || pid <= 0 || seen[pid] {
-			continue
-		}
-		name := fields[1]
-		command := strings.Join(fields[2:], " ")
-		if !isDarwinWeChatProcess(name, command) {
-			continue
-		}
-		seen[pid] = true
-		processes = append(processes, darwinProcess{pid: pid, name: name, command: command})
-	}
-	return processes
-}
-
-func isDarwinWeChatProcess(name, command string) bool {
-	baseName := strings.ToLower(filepath.Base(name))
-	lowerCommand := strings.ToLower(command)
-	if baseName == "wechatappex" || strings.Contains(lowerCommand, "wechatappex") ||
-		strings.Contains(lowerCommand, "crashpad_handler") || strings.Contains(lowerCommand, "helper") {
-		return false
-	}
-	if baseName == "wechat" || baseName == "weixin" || baseName == "微信" {
-		return true
-	}
-	return strings.Contains(lowerCommand, "/contents/macos/wechat") ||
-		strings.Contains(lowerCommand, "/contents/macos/weixin") ||
-		strings.Contains(lowerCommand, "/contents/macos/微信")
-}
-
 type darwinProcessDiscoveryError struct {
 	PS        error
 	Launchctl error
@@ -128,82 +84,17 @@ func (err *darwinProcessDiscoveryError) Error() string {
 	return fmt.Sprintf("读取微信进程列表失败：ps=%v；launchctl=%v", err.PS, err.Launchctl)
 }
 
-func parseLaunchctlProcessList(output string) []darwinProcess {
-	var processes []darwinProcess
-	seen := map[int]bool{}
-	depth := 0
-	bundleID := ""
-	program := ""
-	pid := 0
-	for _, line := range strings.Split(output, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if depth == 0 && strings.HasSuffix(trimmed, "= {") {
-			depth = 1
-			bundleID, program, pid = "", "", 0
-			continue
-		}
-		if depth == 0 {
-			continue
-		}
-		if strings.HasPrefix(trimmed, "bundle id = ") {
-			bundleID = strings.TrimSpace(strings.TrimPrefix(trimmed, "bundle id = "))
-		}
-		if strings.HasPrefix(trimmed, "program = ") {
-			program = strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, "program = ")), "\"")
-		}
-		if strings.HasPrefix(trimmed, "pid = ") {
-			pid, _ = strconv.Atoi(strings.TrimSpace(strings.TrimPrefix(trimmed, "pid = ")))
-		}
-		for _, value := range trimmed {
-			switch value {
-			case '{':
-				depth++
-			case '}':
-				depth--
-			}
-		}
-		if depth == 0 && bundleID == "com.tencent.xinWeChat" && pid > 0 && program != "" && !seen[pid] {
-			seen[pid] = true
-			processes = append(processes, darwinProcess{pid: pid, name: filepath.Base(program), command: program})
-		}
-	}
-	return processes
-}
-
-type launchctlProcessRef struct {
-	label string
-	pid   int
-}
-
-func parseLaunchctlProcessRefs(output string) []launchctlProcessRef {
-	var refs []launchctlProcessRef
-	seen := map[int]bool{}
-	for _, line := range strings.Split(output, "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue
-		}
-		pid, err := strconv.Atoi(fields[0])
-		if err != nil || pid <= 0 || seen[pid] {
-			continue
-		}
-		label := fields[len(fields)-1]
-		if !strings.HasPrefix(label, "application.com.tencent.xinWeChat.") || strings.Contains(label, "WeChatAppEx") {
-			continue
-		}
-		seen[pid] = true
-		refs = append(refs, launchctlProcessRef{label: label, pid: pid})
-	}
-	return refs
-}
-
 func darwinTargetProcesses() ([]darwinProcess, string, error) {
-	output, err := exec.Command("/bin/ps", "-axo", "pid=,comm=,args=").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	output, err := runBoundedDarwinOutput(ctx, "/bin/ps", []string{"-axo", "pid=,comm=,args="}, 8*1024*1024)
+	defer zeroBytes(output)
 	if err == nil {
 		return parseDarwinProcessList(string(output)), "ps", nil
 	}
 	uid := strconv.Itoa(os.Getuid())
-	launchOutput, launchErr := exec.Command("/bin/launchctl", "print", "gui/"+uid).Output()
+	launchOutput, launchErr := runBoundedDarwinOutput(ctx, "/bin/launchctl", []string{"print", "gui/" + uid}, 8*1024*1024)
+	defer zeroBytes(launchOutput)
 	if launchErr == nil {
 		processes := parseLaunchctlProcessList(string(launchOutput))
 		seen := map[int]bool{}
@@ -216,15 +107,19 @@ func darwinTargetProcesses() ([]darwinProcess, string, error) {
 			if seen[ref.pid] {
 				continue
 			}
-			detail, commandErr := exec.Command("/bin/launchctl", "print", "gui/"+uid+"/"+ref.label).Output()
+			detail, commandErr := runBoundedDarwinOutput(
+				ctx, "/bin/launchctl", []string{"print", "gui/" + uid + "/" + ref.label}, 1024*1024,
+			)
 			if commandErr != nil {
 				if detailErr == nil {
-					// Keep the first detail error for the partial-discovery diagnostic below.
+					// 保留首个详细错误，供下方的部分发现诊断使用。
 					detailErr = commandErr
 				}
 				continue
 			}
-			for _, process := range parseLaunchctlProcessList(string(detail)) {
+			parsed := parseLaunchctlProcessList(string(detail))
+			zeroBytes(detail)
+			for _, process := range parsed {
 				if process.pid != ref.pid || seen[process.pid] {
 					continue
 				}
@@ -333,7 +228,7 @@ func scanDarwinProcess(task C.mach_port_t, collector *candidateCollector, limit 
 					combined = append(combined, tail...)
 					combined = append(combined, buffer[:read]...)
 					collector.scan(combined)
-					// 指令形态的 XOR 兜底在 image 和 heap 区域同样有用，
+					// 指令形态的 XOR 兜底在映像和堆区域同样有用，
 					// 因此对所有可读页都保持启用。
 					collector.scanInternalXORKeys(combined)
 					if allowKeyObjects {
@@ -365,17 +260,289 @@ func scanDarwinProcess(task C.mach_port_t, collector *candidateCollector, limit 
 	return scanned, limited
 }
 
+func recordDarwinHookDiagnostics(diag *diagnostics, hook platformHookSnapshot) {
+	diag.HookTargetFound += hook.TargetFound
+	diag.HookInstalled = diag.HookInstalled || hook.Installed
+	diag.HookTimeout = diag.HookTimeout || hook.TimedOut
+	diag.HookCaptureCount += hook.Captures
+	diag.DynamicHookUsed = diag.DynamicHookUsed || hook.Used
+	diag.HookTriggerRequired = diag.HookTriggerRequired || hook.TriggerNeeded
+	diag.HookRestartRequired = diag.HookRestartRequired || hook.RestartNeeded
+	if hook.IdentityRejected {
+		diag.StandardRouteEvidence = appendUniqueStrings(diag.StandardRouteEvidence, "hook_target_revalidation_failed")
+	}
+	routes := strings.Split(hook.RouteHistory, "\x00")
+	if hook.RouteHistory == "" {
+		routes = []string{hook.Route}
+	}
+	for _, route := range routes {
+		if route == "" {
+			continue
+		}
+		diag.RouteSelected = route
+		diag.RoutesAttempted = appendUniqueStrings(diag.RoutesAttempted, route)
+	}
+}
+
+type darwinAcquisitionPipeline struct {
+	targets                 databaseTargets
+	scanMedia               mediaEvidence
+	options                 acquireOptions
+	diag                    diagnostics
+	processes               []darwinProcess
+	evidence                darwinBinaryEvidence
+	decision                darwinRouteDecision
+	collector               *candidateCollector
+	derivedMedia            *imageKeys
+	needDatabaseScan        bool
+	needMediaScan           bool
+	persistentHook          bool
+	deferFallback           bool
+	dynamicHookAttempted    bool
+	dynamicWaitForAttempted bool
+	staticRouteAttempted    bool
+}
+
+func (pipeline *darwinAcquisitionPipeline) databaseSatisfied() bool {
+	return !pipeline.needDatabaseScan || pipeline.collector.hasAllDatabaseCandidates()
+}
+
+func (pipeline *darwinAcquisitionPipeline) mediaSatisfied() bool {
+	return !pipeline.needMediaScan || pipeline.collector.resolvedMedia(pipeline.scanMedia) != nil
+}
+
+func (pipeline *darwinAcquisitionPipeline) satisfied() bool {
+	return pipeline.databaseSatisfied() && pipeline.mediaSatisfied()
+}
+
+func (pipeline *darwinAcquisitionPipeline) tryDynamicHook(waitFor bool) {
+	if pipeline.persistentHook || !pipeline.needDatabaseScan || pipeline.options.budget.expired() || pipeline.databaseSatisfied() {
+		return
+	}
+	if waitFor {
+		if pipeline.dynamicWaitForAttempted {
+			return
+		}
+		pipeline.dynamicWaitForAttempted = true
+	} else {
+		if pipeline.dynamicHookAttempted {
+			return
+		}
+		pipeline.dynamicHookAttempted = true
+	}
+	if waitFor && len(pipeline.processes) == 0 {
+		if !darwinPrelaunchHookEligible(pipeline.evidence) {
+			return
+		}
+		recordDarwinHookDiagnostics(&pipeline.diag, captureDarwinHookMode(
+			darwinProcess{}, pipeline.collector, pipeline.options.budget, true, pipeline.diag.SecurityPostureStatus,
+		))
+		return
+	}
+	for _, process := range pipeline.processes {
+		if pipeline.options.budget.expired() || pipeline.databaseSatisfied() {
+			break
+		}
+		processEvidence := darwinCollectBinaryEvidence(process)
+		processDecision := evaluateDarwinRoute(processEvidence, darwinCompatibilityRegistry)
+		if !darwinStandardRouteEligible(processDecision) {
+			continue
+		}
+		isolated := newCandidateCollector(pipeline.targets, pipeline.scanMedia, pipeline.options.budget)
+		hook := captureDarwinHookMode(
+			process, isolated, pipeline.options.budget, waitFor, pipeline.diag.SecurityPostureStatus,
+		)
+		pipeline.collector.mergeValidatedFrom(isolated)
+		isolated.clearSensitiveBuffers()
+		recordDarwinHookDiagnostics(&pipeline.diag, hook)
+	}
+}
+
+func (pipeline *darwinAcquisitionPipeline) runHookStage() {
+	if pipeline.persistentHook {
+		recordDarwinHookDiagnostics(&pipeline.diag, pipeline.options.platformSession.collect(pipeline.collector))
+	}
+	pipeline.deferFallback = pipeline.persistentHook && !pipeline.satisfied() &&
+		pipeline.options.actionReceipt != "restart_wechat" && pipeline.options.actionReceipt != "relogin_wechat"
+	if pipeline.deferFallback && !pipeline.diag.DynamicHookUsed {
+		if pipeline.options.actionReceipt == "trigger_database" {
+			pipeline.diag.HookRestartRequired = true
+			pipeline.diag.HookTriggerRequired = false
+		} else {
+			pipeline.diag.HookTriggerRequired = true
+		}
+	}
+	if pipeline.persistentHook {
+		return
+	}
+	if len(pipeline.processes) == 0 {
+		// Install before a fresh WeChat process initializes its database.
+		pipeline.tryDynamicHook(true)
+		pipeline.diag.StaticScanFallback = !pipeline.satisfied()
+		return
+	}
+	if darwinStandardRouteEligible(pipeline.decision) {
+		pipeline.tryDynamicHook(false)
+		pipeline.tryDynamicHook(true)
+		pipeline.diag.StaticScanFallback = !pipeline.satisfied()
+	}
+}
+
+func (pipeline *darwinAcquisitionPipeline) refreshProcessStage() {
+	if pipeline.deferFallback || len(pipeline.processes) != 0 {
+		return
+	}
+	refreshed, method, err := darwinTargetProcesses()
+	if err != nil {
+		return
+	}
+	pipeline.processes = refreshed
+	pipeline.diag.ProcessDiscoveryMethod = method
+	pipeline.diag.ProcessCount = len(refreshed)
+	if len(refreshed) == 0 {
+		return
+	}
+	pipeline.evidence = darwinCollectBinaryEvidence(refreshed[0])
+	pipeline.decision = applyDarwinRouteEvidence(&pipeline.diag, pipeline.evidence)
+	pipeline.diag.VersionSupport = darwinVersionSupport(pipeline.diag.WeChatVersion)
+}
+
+func (pipeline *darwinAcquisitionPipeline) runStaticScanStage() {
+	for _, process := range pipeline.processes {
+		if pipeline.deferFallback || pipeline.satisfied() {
+			break
+		}
+		processEvidence := darwinCollectBinaryEvidence(process)
+		processDecision := evaluateDarwinRoute(processEvidence, darwinCompatibilityRegistry)
+		if !darwinStandardRouteEligible(processDecision) {
+			continue
+		}
+		if !pipeline.staticRouteAttempted {
+			pipeline.evidence = processEvidence
+			pipeline.decision = applyDarwinRouteEvidence(&pipeline.diag, processEvidence)
+			pipeline.diag.VersionSupport = darwinVersionSupport(pipeline.diag.WeChatVersion)
+		}
+		pipeline.staticRouteAttempted = true
+		if pipeline.diag.SecurityPostureStatus == "sip_disabled_verified" {
+			route := darwinDynamicRouteID(processEvidence.ProcessArchitecture, pipeline.diag.SecurityPostureStatus)
+			pipeline.diag.RouteSelected = route
+			pipeline.diag.RoutesAttempted = appendUniqueStrings(pipeline.diag.RoutesAttempted, route)
+		}
+		if pipeline.diag.ScannedBytes >= darwinTotalScanMax || pipeline.options.budget.expired() {
+			pipeline.diag.ScanLimited = true
+			break
+		}
+		task, err := darwinTaskForPID(process.pid)
+		if err != nil {
+			pipeline.diag.AccessDeniedCount++
+			continue
+		}
+		pipeline.diag.OpenedProcessCount++
+		remaining := darwinTotalScanMax - pipeline.diag.ScannedBytes
+		if remaining > darwinPerProcessScanMax {
+			remaining = darwinPerProcessScanMax
+		}
+		isolated := newCandidateCollector(pipeline.targets, pipeline.scanMedia, pipeline.options.budget)
+		scanned, limited := scanDarwinProcess(task, isolated, remaining, true, pipeline.options.budget)
+		darwinCloseTask(task)
+		if pipeline.needDatabaseScan && !isolated.hasAllDatabaseCandidates() {
+			isolated.resolveDatabasePassphrase(pipeline.options.budget)
+		}
+		pipeline.collector.mergeValidatedFrom(isolated)
+		isolated.clearSensitiveBuffers()
+		pipeline.diag.ScannedBytes += scanned
+		pipeline.diag.ScanLimited = pipeline.diag.ScanLimited || limited
+	}
+	if !pipeline.persistentHook && !pipeline.databaseSatisfied() {
+		pipeline.tryDynamicHook(false)
+	}
+	if !pipeline.deferFallback && pipeline.staticRouteAttempted && !pipeline.satisfied() &&
+		pipeline.diag.SecurityPostureStatus != "sip_disabled_verified" {
+		pipeline.diag.StaticScanFallback = true
+		pipeline.diag.RouteSelected = "darwin_static_fallback"
+		pipeline.diag.RoutesAttempted = appendUniqueStrings(pipeline.diag.RoutesAttempted, pipeline.diag.RouteSelected)
+	}
+}
+
+func (pipeline *darwinAcquisitionPipeline) finalizeProcessAccessStatus() {
+	switch {
+	case pipeline.diag.OpenedProcessCount > 0 && pipeline.diag.AccessDeniedCount > 0:
+		pipeline.diag.ProcessAccessStatus = "partial"
+	case pipeline.diag.HookInstalled && pipeline.diag.OpenedProcessCount == 0:
+		pipeline.diag.ProcessAccessStatus = "dynamic_hook_opened"
+	case pipeline.diag.OpenedProcessCount > 0 && pipeline.options.helperMode:
+		pipeline.diag.ProcessAccessStatus = "helper_opened"
+	case pipeline.diag.OpenedProcessCount > 0:
+		pipeline.diag.ProcessAccessStatus = "direct_opened"
+	case pipeline.diag.AccessDeniedCount > 0:
+		pipeline.diag.ProcessAccessStatus = "denied"
+		pipeline.diag.ProcessAccessError = darwinDeniedAccessError(
+			pipeline.options.helperMode, pipeline.options.helperStatus, pipeline.diag.SecurityPostureStatus,
+		)
+	case pipeline.diag.ProcessCount == 0:
+		pipeline.diag.ProcessAccessStatus = "wechat_not_running"
+	case pipeline.options.budget.expired():
+		pipeline.diag.ProcessAccessStatus = "deadline_exhausted"
+	default:
+		pipeline.diag.ProcessAccessStatus = "unavailable"
+	}
+}
+
+func (pipeline *darwinAcquisitionPipeline) assemble() (response, diagnostics, error) {
+	pipeline.finalizeProcessAccessStatus()
+	if pipeline.needDatabaseScan && !pipeline.databaseSatisfied() {
+		pipeline.collector.resolveDatabasePassphrase(pipeline.options.budget)
+	}
+	keys, ambiguous := pipeline.collector.databaseKeys(pipeline.targets)
+	if pipeline.options.database && len(keys) == 0 && pipeline.options.actionReceipt == "restart_wechat" &&
+		pipeline.diag.HookInstalled && !pipeline.diag.DynamicHookUsed {
+		pipeline.diag.HookReloginRequired = true
+		pipeline.diag.HookTriggerRequired = false
+		pipeline.diag.HookRestartRequired = false
+	} else if pipeline.options.database && len(keys) == 0 && pipeline.options.actionReceipt == "relogin_wechat" {
+		pipeline.diag.HookTriggerRequired = false
+		pipeline.diag.HookRestartRequired = false
+		pipeline.diag.HookReloginRequired = false
+		pipeline.diag.ProcessAccessError = "relogin_no_verified_candidate"
+	}
+	if pipeline.diag.HookReloginRequired && len(keys) == 0 {
+		pipeline.diag.ProcessAccessError = "hook_relogin_required"
+	} else if pipeline.diag.HookRestartRequired && len(keys) == 0 {
+		pipeline.diag.ProcessAccessError = "hook_restart_required"
+	} else if pipeline.diag.HookTriggerRequired && len(keys) == 0 {
+		pipeline.diag.ProcessAccessError = "hook_trigger_required"
+	} else if len(keys) > 0 {
+		pipeline.diag.HookTriggerRequired = false
+		pipeline.diag.HookRestartRequired = false
+		pipeline.diag.HookReloginRequired = false
+	}
+	imageCandidate := pipeline.collector.applyScanDiagnostics(
+		&pipeline.diag, keys, ambiguous, pipeline.derivedMedia, pipeline.scanMedia,
+	)
+	credential, err := pipeline.collector.databaseCredential(keys, pipeline.targets)
+	if err != nil {
+		return response{}, pipeline.diag, err
+	}
+	return response{
+		DatabaseKeys: keys, DatabaseProfiles: pipeline.collector.profilesForKeys(keys),
+		DatabaseCredential: credential, ImageKeys: imageCandidate,
+	}, pipeline.diag, nil
+}
+
 func platformAcquire(targets databaseTargets, media mediaEvidence, options acquireOptions) (response, diagnostics, error) {
 	helperStatus := options.helperStatus
 	if options.helperMode {
 		helperStatus = "used"
 	}
-	diag := diagnostics{
-		Platform:                  "darwin",
-		HelperStatus:              helperStatus,
-		DatabaseCount:             targets.count,
-		V2SampleCount:             len(media.v2Blocks),
-		XORDistinctCandidateCount: len(media.xorCandidates),
+	diag := newDiagnostics("darwin", requestedScopes(options.database, options.media))
+	diag.HelperStatus = helperStatus
+	diag.DatabaseCount = targets.count
+	diag.V2SampleCount = len(media.v2Blocks)
+	diag.XORDistinctCandidateCount = len(media.xorCandidates)
+	if options.helperStatus == "untrusted" {
+		diag.ProcessAccessStatus = "denied"
+		diag.ProcessAccessError = "helper_untrusted"
+		return response{}, diag, nil
 	}
 	for _, count := range media.xorCandidates {
 		diag.XORSampleCount += count
@@ -415,141 +582,32 @@ func platformAcquire(targets databaseTargets, media mediaEvidence, options acqui
 	}
 	diag.ProcessDiscoveryMethod = discoveryMethod
 	diag.ProcessCount = len(processes)
+	var evidenceProcess darwinProcess
 	if len(processes) > 0 {
-		diag.WeChatVersion = darwinProcessVersion(processes[0])
-		diag.ProcessArchitecture = darwinProcessArchitecture(processes[0])
+		evidenceProcess = processes[0]
 	} else {
 		// 全新初始化可能正好赶在微信进程切换的空档启动。4.1.x 的密钥只在数据库
-		// 初始化时可见，因此即便当前没有可附加的 PID，也必须武装 wait-for。
-		diag.ProcessArchitecture = runtime.GOARCH
+		// 初始化时可见。这里只能读取待启动二进制身份；实际 slice 必须等进程出现后重检。
+		evidenceProcess.command = darwinWeChatExecutable(darwinProcess{})
+		evidenceProcess.name = filepath.Base(evidenceProcess.command)
 	}
+	evidence := darwinCollectBinaryEvidence(evidenceProcess)
+	decision := applyDarwinRouteEvidence(&diag, evidence)
 	diag.VersionSupport = darwinVersionSupport(diag.WeChatVersion)
 	scanMedia := selectedMedia
 	if !needMediaScan {
 		scanMedia = mediaEvidence{xorCandidates: map[byte]int{}}
 	}
-	collector := newCandidateCollector(targets, scanMedia)
-	dynamicHookAttempted := false
-	dynamicWaitForAttempted := false
-	recordHook := func(hook darwinHookResult) {
-		diag.HookTargetFound += hook.targetFound
-		diag.HookInstalled = diag.HookInstalled || hook.installed
-		diag.HookTimeout = diag.HookTimeout || hook.timedOut
-		diag.HookCaptureCount += hook.captures
-		diag.DynamicHookUsed = diag.DynamicHookUsed || hook.used
-		diag.HookTriggerRequired = diag.HookTriggerRequired || hook.triggerNeeded
-		diag.HookRestartRequired = diag.HookRestartRequired || hook.restartNeeded
+	collector := newCandidateCollector(targets, scanMedia, options.budget)
+	pipeline := &darwinAcquisitionPipeline{
+		targets: targets, scanMedia: scanMedia, options: options, diag: diag,
+		processes: processes, evidence: evidence, decision: decision, collector: collector,
+		derivedMedia: derivedMedia, needDatabaseScan: needDatabaseScan, needMediaScan: needMediaScan,
+		persistentHook: options.platformSession != nil,
 	}
-	tryDynamicHook := func(waitFor bool) {
-		if !options.database || options.budget.expired() {
-			return
-		}
-		if waitFor {
-			if dynamicWaitForAttempted {
-				return
-			}
-			dynamicWaitForAttempted = true
-		} else {
-			if dynamicHookAttempted {
-				return
-			}
-			dynamicHookAttempted = true
-		}
-		if waitFor && len(processes) == 0 {
-			recordHook(captureDarwinHookMode(darwinProcess{}, collector, options.budget, true))
-			return
-		}
-		for _, process := range processes {
-			if options.budget.expired() || collector.hasAllDatabaseCandidates() {
-				break
-			}
-			hook := captureDarwinHookMode(process, collector, options.budget, waitFor)
-			recordHook(hook)
-		}
-	}
-	if len(processes) == 0 {
-		// 让 lldb 等待新的微信进程，而不是在装上数据库打开钩子之前就失败。
-		tryDynamicHook(true)
-		diag.StaticScanFallback = !collector.hasAllDatabaseCandidates()
-	} else if darwinPreferDynamicHook(diag.WeChatVersion) {
-		tryDynamicHook(false)
-		if !collector.hasAllDatabaseCandidates() {
-			tryDynamicHook(true)
-		}
-		diag.StaticScanFallback = !collector.hasAllDatabaseCandidates()
-	}
-	if len(processes) == 0 {
-		// wait-for 的目标此刻可能已经起来了。刷新进程列表，以便钩子没抓到时
-		// 常规的静态兜底能检查它。
-		if refreshed, refreshedMethod, refreshErr := darwinTargetProcesses(); refreshErr == nil {
-			processes = refreshed
-			diag.ProcessDiscoveryMethod = refreshedMethod
-			diag.ProcessCount = len(processes)
-			if len(processes) > 0 {
-				diag.WeChatVersion = darwinProcessVersion(processes[0])
-				diag.ProcessArchitecture = darwinProcessArchitecture(processes[0])
-				diag.VersionSupport = darwinVersionSupport(diag.WeChatVersion)
-			}
-		}
-	}
-	for _, process := range processes {
-		if diag.ScannedBytes >= darwinTotalScanMax || options.budget.expired() {
-			diag.ScanLimited = true
-			break
-		}
-		task, taskErr := darwinTaskForPID(process.pid)
-		if taskErr != nil {
-			diag.AccessDeniedCount++
-			continue
-		}
-		diag.OpenedProcessCount++
-		remaining := darwinTotalScanMax - diag.ScannedBytes
-		if remaining > darwinPerProcessScanMax {
-			remaining = darwinPerProcessScanMax
-		}
-		scanned, limited := scanDarwinProcess(task, collector, remaining, true, options.budget)
-		darwinCloseTask(task)
-		diag.ScannedBytes += scanned
-		diag.ScanLimited = diag.ScanLimited || limited
-	}
-	if !collector.hasAllDatabaseCandidates() {
-		tryDynamicHook(false)
-	}
-	switch {
-	case diag.OpenedProcessCount > 0 && diag.AccessDeniedCount > 0:
-		diag.ProcessAccessStatus = "partial"
-	case diag.HookInstalled && diag.OpenedProcessCount == 0:
-		diag.ProcessAccessStatus = "dynamic_hook_opened"
-	case diag.OpenedProcessCount > 0 && options.helperMode:
-		diag.ProcessAccessStatus = "helper_opened"
-	case diag.OpenedProcessCount > 0:
-		diag.ProcessAccessStatus = "direct_opened"
-	case diag.AccessDeniedCount > 0:
-		diag.ProcessAccessStatus = "denied"
-		if options.helperStatus == "sip_enabled" {
-			diag.ProcessAccessError = "sip_enabled"
-		} else {
-			diag.ProcessAccessError = "task_for_pid_denied"
-		}
-	case diag.ProcessCount == 0:
-		diag.ProcessAccessStatus = "wechat_not_running"
-	case options.budget.expired():
-		diag.ProcessAccessStatus = "deadline_exhausted"
-	default:
-		diag.ProcessAccessStatus = "unavailable"
-	}
-	if !collector.hasAllDatabaseCandidates() {
-		collector.resolveDatabasePassphrase(options.budget)
-	}
-	keys, ambiguous := collector.databaseKeys(targets)
-	if diag.HookRestartRequired && len(keys) == 0 {
-		diag.ProcessAccessError = "hook_restart_required"
-	} else if diag.HookTriggerRequired && len(keys) == 0 {
-		diag.ProcessAccessError = "hook_trigger_required"
-	} else if len(keys) > 0 {
-		diag.HookTriggerRequired = false
-		diag.HookRestartRequired = false
-	}
-	imageCandidate := collector.applyScanDiagnostics(&diag, keys, ambiguous, derivedMedia, scanMedia)
-	return response{DatabaseKeys: keys, ImageKeys: imageCandidate}, diag, nil
+	defer pipeline.collector.clearSensitiveBuffers()
+	pipeline.runHookStage()
+	pipeline.refreshProcessStage()
+	pipeline.runStaticScanStage()
+	return pipeline.assemble()
 }

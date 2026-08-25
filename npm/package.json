@@ -1,7 +1,7 @@
 {
   "name": "@zanescope/v-local-key-provider",
   "version": "0.1.0-dev.0",
-  "description": "可选的本地 Windows/macOS 密钥候选提供器（v-local-key-provider/v2 协议）",
+  "description": "可选的本地 Windows/macOS 密钥候选提供器（v-local-key-provider/v1 协议）",
   "license": "SEE LICENSE IN LICENSE",
   "repository": {
     "type": "git",

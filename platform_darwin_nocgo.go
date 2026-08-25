@@ -1,12 +1,13 @@
 //go:build darwin && !cgo
 
-package main
+package provider
 
 import "errors"
 
 func platformAcquire(targets databaseTargets, media mediaEvidence, options acquireOptions) (response, diagnostics, error) {
-	return response{}, diagnostics{
-		Platform: "darwin", ProcessAccessStatus: "unavailable",
-		ProcessAccessError: "cgo_required", HelperStatus: options.helperStatus,
-	}, errors.New("macOS 密钥获取需要启用 cgo 以调用 Mach 只读内存 API")
+	diag := newDiagnostics("darwin", requestedScopes(options.database, options.media))
+	diag.ProcessAccessStatus = "unavailable"
+	diag.ProcessAccessError = "cgo_required"
+	diag.HelperStatus = options.helperStatus
+	return response{}, diag, errors.New("macOS 密钥获取需要启用 cgo 以调用 Mach 只读内存 API")
 }

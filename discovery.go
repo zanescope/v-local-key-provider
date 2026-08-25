@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"bytes"
@@ -23,9 +23,10 @@ var (
 )
 
 type databaseTargets struct {
-	bySalt map[string][]string
-	pages  []databasePage
-	count  int
+	bySalt  map[string][]string
+	pages   []databasePage
+	count   int
+	catalog databaseCatalog
 }
 
 func cleanWXID(accountName string) string {
@@ -39,11 +40,9 @@ func cleanWXID(accountName string) string {
 	return accountName
 }
 
-// accountNameCandidates returns bounded identity candidates.  Some WeChat
-// layouts append an instance suffix to a normal username (for example
-// "name_ab12"), while wxid directories use a separate historical form.  The
-// candidates are never trusted by themselves: resolveKVCommMedia validates
-// each derived key against every available media sample before accepting one.
+// accountNameCandidates 返回数量受限的身份候选。部分微信目录布局会在普通用户名后附加
+// 实例后缀（例如 "name_ab12"），而 wxid 目录沿用另一种历史格式。这些候选本身均不受信任；
+// resolveKVCommMedia 会用全部可用媒体样本验证每个派生密钥，只有通过后才接受。
 func accountNameCandidates(accountName string) []string {
 	accountName = filepath.Base(filepath.Clean(accountName))
 	if accountName == "." || accountName == string(filepath.Separator) || accountName == "" {
@@ -105,8 +104,8 @@ func macOSKVCommRoots(accountDir, home string) []string {
 			filepath.Join(home, "Library", "Containers", "com.tencent.xinWeChat", "Data", "Documents", "xwechat", "net", "kvcomm"))
 	}
 
-	// The account directory is often the only stable path available to the
-	// caller. Derive sibling app_data/net/kvcomm locations from it as well.
+	// 账号目录通常是调用方唯一能稳定获得的路径，因此也要由它推导同级的
+	// app_data/net/kvcomm 位置。
 	normalized := strings.TrimRight(filepath.ToSlash(filepath.Clean(accountDir)), "/")
 	if index := strings.Index(normalized, "/xwechat_files"); index >= 0 {
 		roots = appendUniquePath(roots, filepath.FromSlash(normalized[:index]+"/app_data/net/kvcomm"))
@@ -197,9 +196,11 @@ func resolveKVCommMedia(accountDir string, evidence mediaEvidence) (*imageKeys, 
 }
 
 type databasePage struct {
-	salt string
-	path string
-	data []byte
+	databaseID string
+	salt       string
+	path       string
+	profileID  string
+	data       []byte
 }
 
 type mediaEvidence struct {
@@ -230,50 +231,34 @@ func selectDominantXOR(evidence mediaEvidence) (mediaEvidence, bool, int, int) {
 	return selected, true, leading, second
 }
 
-func discoverDatabaseTargets(dbDir string, budget budget) (databaseTargets, error) {
-	targets := databaseTargets{bySalt: map[string][]string{}}
-	err := filepath.WalkDir(dbDir, func(path string, entry fs.DirEntry, walkErr error) error {
-		if budget.expired() {
-			return fs.SkipAll
+func targetsFromCatalog(catalog databaseCatalog, pages []databasePage) databaseTargets {
+	targets := databaseTargets{bySalt: map[string][]string{}, pages: pages, catalog: catalog}
+	for _, database := range catalog.Databases {
+		if database.RequiredForKeyCoverage {
+			targets.count++
 		}
-		if walkErr != nil {
-			return nil
+		if database.Classification == classificationEncrypted && database.Salt != "" {
+			targets.bySalt[database.Salt] = append(targets.bySalt[database.Salt], database.RelativePath)
 		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			if entry.IsDir() {
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if entry.IsDir() || !strings.EqualFold(filepath.Ext(entry.Name()), ".db") {
-			return nil
-		}
-		file, err := os.Open(path)
-		if err != nil {
-			return nil
-		}
-		page := make([]byte, 4096)
-		read, readErr := io.ReadFull(file, page)
-		file.Close()
-		if read < 16 || (readErr != nil && readErr != io.ErrUnexpectedEOF) || bytes.Equal(page[:16], sqliteHeader) {
-			return nil
-		}
-		relative, err := filepath.Rel(dbDir, path)
-		if err != nil {
-			return nil
-		}
-		salt := hex.EncodeToString(page[:16])
-		targets.bySalt[salt] = append(targets.bySalt[salt], relative)
-		if read == len(page) {
-			targets.pages = append(targets.pages, databasePage{salt: salt, path: relative, data: page})
-		}
-		targets.count++
-		return nil
-	})
-	if err == fs.SkipAll {
-		err = nil
 	}
-	return targets, err
+	return targets
+}
+
+func discoverDatabaseTargetsWithKey(dbDir string, remaining budget, catalogKey []byte) (databaseTargets, error) {
+	catalog, pages, err := discoverDatabaseCatalog(dbDir, remaining, catalogKey)
+	if err != nil {
+		return databaseTargets{}, err
+	}
+	return targetsFromCatalog(catalog, pages), nil
+}
+
+func discoverDatabaseTargets(dbDir string, remaining budget) (databaseTargets, error) {
+	key, err := randomCatalogKey()
+	if err != nil {
+		return databaseTargets{}, err
+	}
+	defer zeroBytes(key)
+	return discoverDatabaseTargetsWithKey(dbDir, remaining, key)
 }
 
 func resolveCaseInsensitive(base string, parts ...string) string {

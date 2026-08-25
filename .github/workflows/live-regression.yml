@@ -1,0 +1,168 @@
+name: Phase 3-4 live regression
+
+on:
+  workflow_dispatch:
+    inputs:
+      candidate_run_id:
+        description: Successful Release candidate workflow run id
+        required: true
+        type: string
+      candidate_source_commit:
+        description: Exact source commit attested by the candidate workflow
+        required: true
+        type: string
+      runner_label:
+        description: Dedicated authorized self-hosted runner label
+        required: true
+        type: string
+      expected_result:
+        description: Expected result_code for the prepared device state
+        required: true
+        default: complete
+        type: string
+      expected_coverage:
+        description: Expected database coverage_status
+        required: true
+        default: complete
+        type: string
+      expected_route:
+        description: Expected route_selected
+        required: true
+        type: string
+      expected_registry_status:
+        description: Expected compatibility_registry_status for release evidence
+        required: true
+        default: registered_supported
+        type: string
+      expected_config_cipher_status:
+        description: Expected Windows config_cipher_route_status (ignored on macOS)
+        required: true
+        default: succeeded
+        type: string
+      expected_target_binding:
+        description: Optional expected Windows target_binding_status
+        required: false
+        default: path_verified
+        type: string
+      expect_process_stable:
+        description: Require the Windows target process inventory to remain unchanged
+        required: true
+        default: true
+        type: boolean
+      expected_process_arch:
+        description: Expected target process architecture (amd64 or arm64)
+        required: true
+        type: choice
+        options: [amd64, arm64]
+      expected_next_action:
+        description: Optional expected next_action for a deliberately staged partial/action run
+        required: false
+        type: string
+      scopes:
+        description: Comma-separated scopes
+        required: true
+        default: database
+        type: string
+      confirm_authorized_data:
+        description: Confirm this runner contains only data you are explicitly authorized to inspect
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  actions: read
+  attestations: read
+
+concurrency:
+  group: live-key-regression-${{ inputs.runner_label }}
+  cancel-in-progress: false
+
+jobs:
+  live:
+    if: inputs.confirm_authorized_data == true
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    timeout-minutes: 30
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ inputs.candidate_source_commit }}
+      - name: 配置 Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: 配置 Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+      - name: 下载指定候选工作流的不可变资产
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: v-local-key-provider-release-candidate
+          path: candidate
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ inputs.candidate_run_id }}
+      - name: 验证 Windows 候选清单和全部资产摘要
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node npm/scripts/candidate-manifest.js verify `
+            candidate/dist/candidate-manifest.json candidate/dist windows '${{ inputs.expected_process_arch }}' `
+            '${{ inputs.candidate_source_commit }}' '${{ inputs.candidate_run_id }}'
+      - name: 验证 macOS 候选清单和全部资产摘要
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          node npm/scripts/candidate-manifest.js verify \
+            candidate/dist/candidate-manifest.json candidate/dist darwin '${{ inputs.expected_process_arch }}' \
+            '${{ inputs.candidate_source_commit }}' '${{ inputs.candidate_run_id }}'
+      - name: 验证 Windows 候选 GitHub attestation
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh attestation verify candidate/dist/candidate-manifest.json --repo $env:GITHUB_REPOSITORY --signer-workflow "$env:GITHUB_REPOSITORY/.github/workflows/release-candidate.yml" --source-digest '${{ inputs.candidate_source_commit }}'
+          gh attestation verify "$env:V_LOCAL_KEY_PROVIDER_LIVE_BINARY" --repo $env:GITHUB_REPOSITORY --signer-workflow "$env:GITHUB_REPOSITORY/.github/workflows/release-candidate.yml" --source-digest '${{ inputs.candidate_source_commit }}'
+          "V_LOCAL_KEY_PROVIDER_LIVE_CANDIDATE_ATTESTATION_VERIFIED=true" >> $env:GITHUB_ENV
+      - name: 验证 macOS 候选 GitHub attestation
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          chmod 700 "${V_LOCAL_KEY_PROVIDER_LIVE_BINARY}" "${V_LOCAL_KEY_PROVIDER_LIVE_HELPER_BINARY}"
+          signer_workflow="${GITHUB_REPOSITORY}/.github/workflows/release-candidate.yml"
+          gh attestation verify candidate/dist/candidate-manifest.json --repo "${GITHUB_REPOSITORY}" --signer-workflow "${signer_workflow}" --source-digest '${{ inputs.candidate_source_commit }}'
+          gh attestation verify "${V_LOCAL_KEY_PROVIDER_LIVE_BINARY}" --repo "${GITHUB_REPOSITORY}" --signer-workflow "${signer_workflow}" --source-digest '${{ inputs.candidate_source_commit }}'
+          gh attestation verify "${V_LOCAL_KEY_PROVIDER_LIVE_HELPER_BINARY}" --repo "${GITHUB_REPOSITORY}" --signer-workflow "${signer_workflow}" --source-digest '${{ inputs.candidate_source_commit }}'
+          echo "V_LOCAL_KEY_PROVIDER_LIVE_CANDIDATE_ATTESTATION_VERIFIED=true" >> "${GITHUB_ENV}"
+      - name: 运行已授权真机回归
+        env:
+          V_LOCAL_KEY_PROVIDER_LIVE_CONSENT: I_HAVE_EXPLICIT_AUTHORIZATION
+          V_LOCAL_KEY_PROVIDER_LIVE_ACCOUNT_DIR: ${{ secrets.LIVE_ACCOUNT_DIR }}
+          V_LOCAL_KEY_PROVIDER_LIVE_DB_DIR: ${{ secrets.LIVE_DB_DIR }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_RESULT: ${{ inputs.expected_result }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_DATABASE_COVERAGE: ${{ inputs.expected_coverage }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_ROUTE: ${{ inputs.expected_route }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_ARCH: ${{ inputs.expected_process_arch }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_NEXT_ACTION: ${{ inputs.expected_next_action }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_REGISTRY_STATUS: ${{ inputs.expected_registry_status }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_CONFIG_CIPHER_STATUS: ${{ inputs.expected_config_cipher_status }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_TARGET_BINDING: ${{ inputs.expected_target_binding }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_STABLE: ${{ inputs.expect_process_stable }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EVIDENCE_PATH: ${{ github.workspace }}/build/live/evidence.json
+          V_LOCAL_KEY_PROVIDER_LIVE_SCOPES: ${{ inputs.scopes }}
+        run: go test -tags=live_regression -run '^TestPhase(3MacOS|4Windows)LiveAcquisition$' -count=1 .
+      - name: 上传脱敏真机证据
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: live-key-evidence-${{ runner.os }}-${{ inputs.expected_process_arch }}
+          path: build/live/evidence.json
+          if-no-files-found: error
+          retention-days: 14

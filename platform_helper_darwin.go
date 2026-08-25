@@ -1,23 +1,30 @@
 //go:build darwin
 
-package main
+package provider
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
+	"io"
+	"net"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
+	"time"
 )
 
 const darwinHelperEnvironment = "V_LOCAL_KEY_PROVIDER_HELPER"
+const darwinAllowUnverifiedHelperEnvironment = "V_LOCAL_KEY_PROVIDER_ALLOW_UNVERIFIED_HELPER"
 const darwinHelperModeEnvironment = "V_LOCAL_KEY_PROVIDER_MACOS_HELPER_MODE"
 const darwinHelperName = "v-local-key-provider-helper"
-const darwinHelperOutputMax = maxRequestBytes
+const darwinHelperOutputMax = maxResponseBytes
+const darwinHelperDiagnosticMax = 256 * 1024
+const darwinHelperLoopbackTimeout = 2 * time.Minute
 
 func canonicalDarwinHelper(candidate, executable string) string {
 	if candidate == "" {
@@ -43,17 +50,49 @@ func canonicalDarwinHelper(candidate, executable string) string {
 }
 
 func darwinHelperExecutable() string {
+	path, _ := darwinHelperExecutableWithStatus()
+	return path
+}
+
+func darwinHelperExecutableWithStatus() (string, string) {
 	executable, err := os.Executable()
 	if err != nil {
-		return ""
+		return "", "untrusted"
+	}
+	executable, err = filepathEvalCanonical(executable)
+	if err != nil {
+		return "", "untrusted"
 	}
 	if configured := os.Getenv(darwinHelperEnvironment); configured != "" {
-		return canonicalDarwinHelper(configured, executable)
+		if releaseBuild() || os.Getenv(darwinAllowUnverifiedHelperEnvironment) != "1" {
+			return "", "untrusted"
+		}
+		path := canonicalDarwinHelper(configured, executable)
+		if path == "" {
+			return "", "untrusted"
+		}
+		return path, "development_override"
 	}
-	return canonicalDarwinHelper(filepath.Join(filepath.Dir(executable), darwinHelperName), executable)
+	helper := canonicalDarwinHelper(filepath.Join(filepath.Dir(executable), darwinHelperName), executable)
+	if helper == "" {
+		return "", "not_installed"
+	}
+	if err := validateDarwinComponentPair(executable, helper); err != nil {
+		return "", "untrusted"
+	}
+	if releaseBuild() {
+		return helper, "trusted"
+	}
+	return helper, "development"
 }
 
 func darwinHelperMode() string {
+	// The AppleScript compatibility path executes the companion as root without
+	// a privilege-separated service boundary. Signed releases therefore use
+	// only the ordinary, same-user companion until such a service exists.
+	if releaseBuild() {
+		return "direct"
+	}
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv(darwinHelperModeEnvironment)))
 	switch mode {
 	case "direct", "elevated", "auto":
@@ -68,7 +107,12 @@ func darwinShellQuote(value string) string {
 }
 
 func darwinHelperAccessDenied(output []byte) bool {
-	var result response
+	var result struct {
+		Diagnostics struct {
+			ProcessAccessStatus string `json:"process_access_status"`
+			ProcessAccessError  string `json:"process_access_error"`
+		} `json:"diagnostics"`
+	}
 	if json.Unmarshal(output, &result) != nil {
 		return false
 	}
@@ -76,56 +120,85 @@ func darwinHelperAccessDenied(output []byte) bool {
 		result.Diagnostics.ProcessAccessError == "task_for_pid_denied"
 }
 
+func replaceDarwinRawMessage(values map[string]json.RawMessage, key string, replacement json.RawMessage) {
+	if previous := values[key]; len(previous) > 0 {
+		zeroBytes(previous)
+	}
+	values[key] = replacement
+}
+
 func markDarwinHelperStatus(output []byte, helperStatus, processAccessError string) []byte {
-	var result response
-	if json.Unmarshal(output, &result) != nil {
+	var envelope map[string]json.RawMessage
+	if json.Unmarshal(output, &envelope) != nil {
 		return output
 	}
-	result.Diagnostics.HelperStatus = helperStatus
-	if processAccessError != "" {
-		result.Diagnostics.ProcessAccessError = processAccessError
+	defer func() {
+		for _, value := range envelope {
+			zeroBytes(value)
+		}
+	}()
+	var values map[string]json.RawMessage
+	if json.Unmarshal(envelope["diagnostics"], &values) != nil {
+		return output
 	}
-	updated, err := json.Marshal(result)
+	defer func() {
+		for _, value := range values {
+			zeroBytes(value)
+		}
+	}()
+	statusJSON, _ := json.Marshal(helperStatus)
+	replaceDarwinRawMessage(values, "helper_status", statusJSON)
+	if processAccessError != "" {
+		errorJSON, _ := json.Marshal(processAccessError)
+		replaceDarwinRawMessage(values, "process_access_error", errorJSON)
+	}
+	diagnosticsJSON, err := json.Marshal(values)
 	if err != nil {
 		return output
 	}
-	return append(updated, '\n')
+	defer zeroBytes(diagnosticsJSON)
+	replaceDarwinRawMessage(envelope, "diagnostics", diagnosticsJSON)
+	updated, err := json.Marshal(envelope)
+	if err != nil {
+		return output
+	}
+	framed := make([]byte, len(updated)+1)
+	copy(framed, updated)
+	framed[len(framed)-1] = '\n'
+	zeroBytes(updated)
+	markSensitiveBytes(framed)
+	zeroBytes(output)
+	return framed
 }
 
 func darwinSIPEnabled() (bool, bool) {
-	output, err := exec.Command("/usr/bin/csrutil", "status").CombinedOutput()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	output, err := runBoundedDarwinCombinedOutput(ctx, "/usr/bin/csrutil", []string{"status"}, 16*1024)
+	defer zeroBytes(output)
 	if err != nil {
 		return false, false
 	}
-	return strings.Contains(strings.ToLower(string(output)), "status: enabled"), true
+	return parseDarwinSIPStatus(string(output))
+}
+
+func parseDarwinSIPStatus(output string) (bool, bool) {
+	status := strings.TrimSpace(strings.ReplaceAll(output, "\r\n", "\n"))
+	switch status {
+	case "System Integrity Protection status: enabled.":
+		return true, true
+	case "System Integrity Protection status: disabled.":
+		return false, true
+	}
+	return false, false
 }
 
 func helperContext(remaining budget) (context.Context, context.CancelFunc) {
-	if remaining.unlimited {
-		return context.Background(), func() {}
+	deadline, bounded := remaining.deadline()
+	if !bounded {
+		return context.WithTimeout(context.Background(), darwinHelperLoopbackTimeout)
 	}
-	return context.WithDeadline(context.Background(), remaining.deadline)
-}
-
-// runDarwinCommand 独占 helper 的进程组，这样时限到点后不会把 lldb 或
-// AppleScript 拉起的 shell 遗留成孤儿进程。
-func runDarwinCommand(ctx context.Context, command *exec.Cmd) error {
-	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := command.Start(); err != nil {
-		return err
-	}
-	finished := make(chan error, 1)
-	go func() { finished <- command.Wait() }()
-	select {
-	case err := <-finished:
-		return err
-	case <-ctx.Done():
-		if command.Process != nil {
-			_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
-		}
-		<-finished
-		return ctx.Err()
-	}
+	return context.WithDeadline(context.Background(), deadline)
 }
 
 func runDarwinHelperDirect(helper string, payload []byte, remaining budget) ([]byte, string) {
@@ -134,53 +207,110 @@ func runDarwinHelperDirect(helper string, payload []byte, remaining budget) ([]b
 	}
 	ctx, cancel := helperContext(remaining)
 	defer cancel()
-	command := exec.Command(helper, "helper-acquire")
-	command.Dir = filepath.Dir(helper)
-	command.Stdin = bytes.NewReader(payload)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	command.Stdout = &stdout
-	command.Stderr = &stderr
-	if err := runDarwinCommand(ctx, command); err != nil || stdout.Len() == 0 || stdout.Len() > darwinHelperOutputMax {
+	stdout, stderr, err := runBoundedDarwinCommand(
+		ctx, helper, []string{"helper-acquire"}, bytes.NewReader(payload), filepath.Dir(helper),
+		darwinHelperOutputMax+1, darwinHelperDiagnosticMax,
+	)
+	defer zeroBytes(stdout)
+	defer zeroBytes(stderr)
+	if err != nil || len(stdout) == 0 || len(stdout) > darwinHelperOutputMax {
 		if ctx.Err() != nil {
 			return nil, "deadline_exhausted"
 		}
 		return nil, "launch_failed"
 	}
-	return stdout.Bytes(), "used"
+	return cloneSensitiveBytes(stdout), "used"
 }
 
-// runDarwinHelperElevated 沿用 WeFlow 的兼容路径：helper 通过管理员鉴权的
-// AppleScript 运行。请求与响应都留在 0600 临时文件里，两者都不落日志。
+type darwinHelperExchange struct {
+	output []byte
+	err    error
+}
+
+func darwinHelperDeadline(remaining budget) time.Time {
+	if deadline, bounded := remaining.deadline(); bounded {
+		return deadline
+	}
+	return time.Now().Add(darwinHelperLoopbackTimeout)
+}
+
+func readDarwinHelperLine(reader *bufio.Reader, limit int) ([]byte, error) {
+	payload, err := reader.ReadSlice('\n')
+	if len(payload) > 0 {
+		defer zeroBytes(payload)
+	}
+	if err != nil && !errors.Is(err, io.EOF) {
+		return nil, err
+	}
+	if len(payload) == 0 || len(payload) > limit+1 {
+		return nil, errors.New("helper frame is empty or too large")
+	}
+	return cloneSensitiveBytes(bytes.TrimSpace(payload)), nil
+}
+
+func exchangeDarwinElevatedHelper(listener *net.TCPListener, token string, payload []byte, deadline time.Time) darwinHelperExchange {
+	_ = listener.SetDeadline(deadline)
+	for attempts := 0; attempts < 8; attempts++ {
+		connection, err := listener.AcceptTCP()
+		if err != nil {
+			return darwinHelperExchange{err: err}
+		}
+		_ = connection.SetDeadline(deadline)
+		reader := bufio.NewReaderSize(connection, darwinHelperOutputMax+2)
+		presented, readErr := readDarwinHelperLine(reader, 64)
+		authenticated := readErr == nil && len(presented) == 64 && subtle.ConstantTimeCompare(presented, []byte(token)) == 1
+		zeroBytes(presented)
+		if !authenticated {
+			_ = connection.Close()
+			continue
+		}
+		var compact bytes.Buffer
+		compact.Grow(len(payload))
+		defer func() { zeroBytes(compact.Bytes()) }()
+		if err := json.Compact(&compact, payload); err != nil {
+			_ = connection.Close()
+			return darwinHelperExchange{err: err}
+		}
+		if _, err := io.Copy(connection, bytes.NewReader(compact.Bytes())); err != nil {
+			_ = connection.Close()
+			return darwinHelperExchange{err: err}
+		}
+		if _, err := io.WriteString(connection, "\n"); err != nil {
+			_ = connection.Close()
+			return darwinHelperExchange{err: err}
+		}
+		output, err := readDarwinHelperLine(reader, darwinHelperOutputMax)
+		_ = connection.Close()
+		if err != nil {
+			return darwinHelperExchange{err: err}
+		}
+		return darwinHelperExchange{output: output}
+	}
+	return darwinHelperExchange{err: errors.New("helper authentication failed")}
+}
+
+// runDarwinHelperElevated 请求 macOS 授权随附的辅助程序，但获取请求和响应均不落盘。
+// 除回环地址外，命令行只携带一个短生命周期的随机传输令牌。
 func runDarwinHelperElevated(helper string, payload []byte, remaining budget) ([]byte, string) {
-	requestFile, err := os.CreateTemp("", "v-local-key-provider-request-*.json")
+	if releaseBuild() {
+		return nil, "elevation_disabled_in_release"
+	}
+	listener, err := net.ListenTCP("tcp4", &net.TCPAddr{IP: net.ParseIP("127.0.0.1"), Port: 0})
 	if err != nil {
 		return nil, "launch_failed"
 	}
-	requestPath := requestFile.Name()
-	defer os.Remove(requestPath)
-	_ = requestFile.Chmod(0o600)
-	if _, err := requestFile.Write(payload); err != nil {
-		_ = requestFile.Close()
-		return nil, "launch_failed"
-	}
-	if err := requestFile.Close(); err != nil {
-		return nil, "launch_failed"
-	}
-
-	outputFile, err := os.CreateTemp("", "v-local-key-provider-response-*.json")
+	defer listener.Close()
+	token, err := randomDaemonToken()
 	if err != nil {
 		return nil, "launch_failed"
 	}
-	outputPath := outputFile.Name()
-	defer os.Remove(outputPath)
-	_ = outputFile.Chmod(0o600)
-	if err := outputFile.Close(); err != nil {
-		return nil, "launch_failed"
-	}
+	deadline := darwinHelperDeadline(remaining)
+	exchange := make(chan darwinHelperExchange, 1)
+	go func() { exchange <- exchangeDarwinElevatedHelper(listener, token, payload, deadline) }()
 
-	shellCommand := darwinShellQuote(helper) + " helper-acquire < " + darwinShellQuote(requestPath) +
-		" > " + darwinShellQuote(outputPath) + " 2>/dev/null; rc=$?; /bin/echo VLP_RC:$rc"
+	shellCommand := darwinShellQuote(helper) + " helper-acquire-loopback " +
+		darwinShellQuote(listener.Addr().String()) + " " + darwinShellQuote(token) +
+		" 2>/dev/null; rc=$?; /bin/echo VLP_RC:$rc"
 	appleScript := "set cmd to " + strconv.Quote(shellCommand) + "\n" +
 		"try\n" +
 		"with timeout of 120 seconds\n" +
@@ -192,38 +322,92 @@ func runDarwinHelperElevated(helper string, payload []byte, remaining budget) ([
 		"end try"
 	ctx, cancel := helperContext(remaining)
 	defer cancel()
-	command := exec.Command("/usr/bin/osascript", "-e", appleScript)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	command.Stdout = &stdout
-	command.Stderr = &stderr
-	err = runDarwinCommand(ctx, command)
-	marker := append(stdout.Bytes(), stderr.Bytes()...)
-	if err != nil || !strings.Contains(string(marker), "VLP_RC:0") {
+	stdout, stderr, err := runBoundedDarwinCommand(
+		ctx, "/usr/bin/osascript", []string{"-e", appleScript}, nil, "",
+		darwinHelperDiagnosticMax, darwinHelperDiagnosticMax,
+	)
+	defer zeroBytes(stdout)
+	defer zeroBytes(stderr)
+	_ = listener.Close()
+	result := <-exchange
+	marker := sensitiveOutputBuffer{limit: 2 * darwinHelperDiagnosticMax}
+	_, _ = marker.Write(stdout)
+	_, _ = marker.Write(stderr)
+	defer marker.Clear()
+	if err != nil || result.err != nil || marker.over || !bytes.Contains(marker.Bytes(), []byte("VLP_RC:0")) {
 		if ctx.Err() != nil {
 			return nil, "deadline_exhausted"
 		}
 		return nil, "launch_failed"
 	}
-	output, err := os.ReadFile(outputPath)
-	if err != nil || len(output) == 0 || len(output) > darwinHelperOutputMax {
+	if len(result.output) == 0 || len(result.output) > darwinHelperOutputMax {
 		return nil, "launch_failed"
 	}
-	return output, "elevated"
+	return result.output, "elevated"
 }
 
-// delegateToPlatformHelper 让面向用户的入口保持为单条命令。auto 模式下先尝试
-// 普通伴随组件，只有在 task_for_pid 被拒时才回退到管理员鉴权的兼容路径。
+func runPlatformElevatedHelperClient(address, token string) error {
+	if releaseBuild() {
+		return errors.New("elevated helper transport is disabled in release builds")
+	}
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return errors.New("elevated helper address is invalid")
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() || len(token) != 64 {
+		return errors.New("elevated helper endpoint is invalid")
+	}
+	connection, err := net.DialTimeout("tcp4", address, 10*time.Second)
+	if err != nil {
+		return err
+	}
+	defer connection.Close()
+	_ = connection.SetDeadline(time.Now().Add(darwinHelperLoopbackTimeout))
+	if _, err := io.WriteString(connection, token+"\n"); err != nil {
+		return err
+	}
+	reader := bufio.NewReaderSize(connection, maxRequestBytes+2)
+	payload, err := readDarwinHelperLine(reader, maxRequestBytes)
+	if err != nil {
+		return err
+	}
+	markSensitiveBytes(payload)
+	defer zeroBytes(payload)
+	request, err := decodeRequestData(payload)
+	if err != nil {
+		return err
+	}
+	result, err := executeOneShotAcquire(request, true, "elevated")
+	if err != nil {
+		return err
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil || len(encoded) > darwinHelperOutputMax {
+		return errors.New("elevated helper response is invalid")
+	}
+	markSensitiveBytes(encoded)
+	defer zeroBytes(encoded)
+	if _, err = io.Copy(connection, bytes.NewReader(encoded)); err != nil {
+		return err
+	}
+	_, err = io.WriteString(connection, "\n")
+	return err
+}
+
+// delegateToPlatformHelper 让面向用户的入口保持为单条命令。自动模式下先尝试
+// 普通伴随组件；管理员鉴权的兼容路径严格限于 development 构建。
 func delegateToPlatformHelper(payload []byte, remaining budget) (bool, string) {
-	helper := darwinHelperExecutable()
+	helper, trustStatus := darwinHelperExecutableWithStatus()
 	if helper == "" {
-		return false, "not_installed"
+		return false, trustStatus
 	}
 	mode := darwinHelperMode()
 	var directOutput []byte
 	var directStatus string
 	if mode != "elevated" {
 		directOutput, directStatus = runDarwinHelperDirect(helper, payload, remaining)
+		defer func() { zeroBytes(directOutput) }()
 		if directStatus == "used" && !darwinHelperAccessDenied(directOutput) {
 			if _, err := os.Stdout.Write(directOutput); err != nil {
 				return false, "response_failed"
@@ -240,7 +424,7 @@ func delegateToPlatformHelper(payload []byte, remaining budget) (bool, string) {
 			return false, directStatus
 		}
 	}
-	if !remaining.unlimited && remaining.expired() {
+	if !remaining.isUnlimited() && remaining.expired() {
 		return false, "deadline_exhausted"
 	}
 
@@ -256,6 +440,7 @@ func delegateToPlatformHelper(payload []byte, remaining budget) (bool, string) {
 	}
 
 	elevatedOutput, elevatedStatus := runDarwinHelperElevated(helper, payload, remaining)
+	defer func() { zeroBytes(elevatedOutput) }()
 	if elevatedStatus == "elevated" {
 		elevatedOutput = markDarwinHelperStatus(elevatedOutput, "elevated", "")
 		if _, err := os.Stdout.Write(elevatedOutput); err != nil {

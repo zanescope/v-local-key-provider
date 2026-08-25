@@ -1,4 +1,4 @@
-package main
+package provider
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"crypto/sha512"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -35,7 +36,23 @@ func encryptedDatabasePage(t *testing.T, keyHex, saltHex string) databasePage {
 	iv := bytes.Repeat([]byte{0x5a}, aes.BlockSize)
 	copy(page[4096-reserve:4096-reserve+aes.BlockSize], iv)
 	cipher.NewCBCEncrypter(block, iv).CryptBlocks(page[16:4096-reserve], plain)
+	profile, ok := registeredProfile(defaultProfileID)
+	if !ok {
+		t.Fatal("default profile is not registered")
+	}
+	macKey := profileHMACKey(profile, key, salt, nil)
+	mac := hmac.New(sha512.New, macKey)
+	_, _ = mac.Write(page[16 : 4096-profile.HMACSize])
+	_, _ = mac.Write([]byte{1, 0, 0, 0})
+	copy(page[4096-profile.HMACSize:], mac.Sum(nil))
 	return databasePage{salt: saltHex, data: page}
+}
+
+func encryptedDatabasePageAt(t *testing.T, keyHex, saltHex, path string) databasePage {
+	t.Helper()
+	page := encryptedDatabasePage(t, keyHex, saltHex)
+	page.path = path
+	return page
 }
 
 func encryptedV4PassphrasePage(t *testing.T, passphraseHex, saltHex string) databasePage {
@@ -63,12 +80,25 @@ func encryptedV4PassphrasePage(t *testing.T, passphraseHex, saltHex string) data
 	return page
 }
 
+func TestNewCandidateCollectorDoesNotRewriteSharedTargetPages(t *testing.T) {
+	salt := strings.Repeat("ab", 16)
+	targets := databaseTargets{
+		bySalt: map[string][]string{salt: {"contact.db"}},
+		pages:  []databasePage{{salt: salt}},
+		count:  1,
+	}
+	collector := newCandidateCollector(targets, mediaEvidence{})
+	if targets.pages[0].path != "" || collector.targets.pages[0].path != "" {
+		t.Fatal("collector constructor rewrote the caller-owned target page slice")
+	}
+}
+
 func TestDatabasePatternMapsRawKeyBySalt(t *testing.T) {
 	salt := strings.Repeat("ab", 16)
 	key := strings.Repeat("12", 32)
 	targets := databaseTargets{
 		bySalt: map[string][]string{salt: {"contact\\contact.db"}},
-		pages:  []databasePage{encryptedDatabasePage(t, key, salt)},
+		pages:  []databasePage{encryptedDatabasePageAt(t, key, salt, "contact\\contact.db")},
 		count:  1,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})
@@ -87,8 +117,8 @@ func TestDatabasePatternMaps64HexKeyAcrossDatabaseSalts(t *testing.T) {
 	targets := databaseTargets{
 		bySalt: map[string][]string{salt1: {"one.db"}, salt2: {"two.db"}},
 		pages: []databasePage{
-			encryptedDatabasePage(t, key, salt1),
-			encryptedDatabasePage(t, key, salt2),
+			encryptedDatabasePageAt(t, key, salt1, "one.db"),
+			encryptedDatabasePageAt(t, key, salt2, "two.db"),
 		},
 		count: 2,
 	}
@@ -106,7 +136,7 @@ func TestLongDatabasePatternUsesFirstKeyAndLastSalt(t *testing.T) {
 	salt := strings.Repeat("ef", 16)
 	targets := databaseTargets{
 		bySalt: map[string][]string{salt: {"message.db"}},
-		pages:  []databasePage{encryptedDatabasePage(t, key, salt)},
+		pages:  []databasePage{encryptedDatabasePageAt(t, key, salt, "message.db")},
 		count:  1,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})
@@ -124,7 +154,7 @@ func TestWrongDatabaseKeyIsRejected(t *testing.T) {
 	wrongKey := strings.Repeat("34", 32)
 	targets := databaseTargets{
 		bySalt: map[string][]string{salt: {"contact.db"}},
-		pages:  []databasePage{encryptedDatabasePage(t, validKey, salt)},
+		pages:  []databasePage{encryptedDatabasePageAt(t, validKey, salt, "contact.db")},
 		count:  1,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})
@@ -133,6 +163,46 @@ func TestWrongDatabaseKeyIsRejected(t *testing.T) {
 	keys, ambiguous := collector.databaseKeys(targets)
 	if len(keys) != 0 || ambiguous != 0 {
 		t.Fatalf("wrong candidate was accepted: keys=%v ambiguous=%d", keys, ambiguous)
+	}
+}
+
+func TestDifferentKeysForSameProfileAreValidatorConflict(t *testing.T) {
+	targets := databaseTargets{
+		pages: []databasePage{{path: "message.db", profileID: defaultProfileID}}, count: 1,
+		catalog: databaseCatalog{Databases: []catalogDatabase{{
+			DatabaseID: "db", RelativePath: "message.db", RequiredForKeyCoverage: true,
+		}}},
+	}
+	collector := newCandidateCollector(targets, mediaEvidence{})
+	collector.addDatabaseCandidate("message.db", strings.Repeat("a", 64), defaultProfileID, "raw_enc_key")
+	collector.addDatabaseCandidate("message.db", strings.Repeat("b", 64), defaultProfileID, "global_passphrase")
+	keys, ambiguous := collector.databaseKeys(targets)
+	diag := diagnostics{}
+	collector.applyScanDiagnostics(&diag, keys, ambiguous, nil, mediaEvidence{})
+	finalizeDiagnostics(&diag, targets, response{DatabaseKeys: keys}, acquireOptions{database: true, budget: unlimitedBudget()})
+	if diag.ValidatorConflictCount != 1 || diag.ResultCode != "failed" || diag.WorkflowStatus != "blocked" ||
+		len(diag.BlockingReasons) != 1 || diag.BlockingReasons[0] != "validator_conflict" {
+		t.Fatalf("same-profile validator conflict was treated as ordinary ambiguity: %+v", diag)
+	}
+}
+
+func TestDifferentKeysAcrossProfilesAreValidatorConflict(t *testing.T) {
+	targets := databaseTargets{
+		pages: []databasePage{{path: "message.db"}}, count: 1,
+		catalog: databaseCatalog{Databases: []catalogDatabase{{
+			DatabaseID: "db", RelativePath: "message.db", RequiredForKeyCoverage: true,
+		}}},
+	}
+	collector := newCandidateCollector(targets, mediaEvidence{})
+	collector.addDatabaseCandidate("message.db", strings.Repeat("a", 64), "profile-a", "raw_enc_key")
+	collector.addDatabaseCandidate("message.db", strings.Repeat("b", 64), "profile-b", "global_passphrase")
+	keys, ambiguous := collector.databaseKeys(targets)
+	diag := diagnostics{}
+	collector.applyScanDiagnostics(&diag, keys, ambiguous, nil, mediaEvidence{})
+	finalizeDiagnostics(&diag, targets, response{DatabaseKeys: keys}, acquireOptions{database: true, budget: unlimitedBudget()})
+	if diag.ValidatorConflictCount != 1 || diag.ResultCode != "failed" || diag.WorkflowStatus != "blocked" ||
+		len(diag.BlockingReasons) != 1 || diag.BlockingReasons[0] != "validator_conflict" {
+		t.Fatalf("cross-profile validator conflict was treated as ordinary ambiguity: %+v", diag)
 	}
 }
 
@@ -188,7 +258,7 @@ func TestBinaryDatabaseKeyCandidateMustValidatePage(t *testing.T) {
 	salt := strings.Repeat("9a", 16)
 	targets := databaseTargets{
 		bySalt: map[string][]string{salt: {"message.db"}},
-		pages:  []databasePage{encryptedDatabasePage(t, key, salt)},
+		pages:  []databasePage{encryptedDatabasePageAt(t, key, salt, "message.db")},
 		count:  1,
 	}
 	collector := newCandidateCollector(targets, mediaEvidence{})
@@ -197,6 +267,56 @@ func TestBinaryDatabaseKeyCandidateMustValidatePage(t *testing.T) {
 	keys, ambiguous := collector.databaseKeys(targets)
 	if ambiguous != 0 || keys["message.db"] != key {
 		t.Fatalf("unexpected result: keys=%v ambiguous=%d", keys, ambiguous)
+	}
+}
+
+func TestCapturedRawDatabaseKeyDoesNotUsePassphraseHeuristic(t *testing.T) {
+	key := strings.Repeat("41", 32)
+	salt := strings.Repeat("7b", 16)
+	page := encryptedDatabasePage(t, key, salt)
+	page.path = "message.db"
+	targets := databaseTargets{bySalt: map[string][]string{salt: {page.path}}, pages: []databasePage{page}, count: 1}
+	collector := newCandidateCollector(targets, mediaEvidence{})
+	decoded, err := hex.DecodeString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !collector.considerCapturedDatabaseKey(decoded) {
+		t.Fatal("valid low-entropy-looking raw key was rejected by passphrase heuristics")
+	}
+	keys, ambiguous := collector.databaseKeys(targets)
+	if ambiguous != 0 || keys[page.path] != key {
+		t.Fatalf("captured raw key was not retained after HMAC verification: keys=%v ambiguous=%d", keys, ambiguous)
+	}
+}
+
+func TestMergeValidatedCollectorDoesNotMergeUnverifiedProcessCandidates(t *testing.T) {
+	key := strings.Repeat("42", 32)
+	salt := strings.Repeat("6c", 16)
+	page := encryptedDatabasePage(t, key, salt)
+	page.path = "message.db"
+	targets := databaseTargets{bySalt: map[string][]string{salt: {page.path}}, pages: []databasePage{page}, count: 1}
+	aggregate := newCandidateCollector(targets, mediaEvidence{})
+	isolated := newCandidateCollector(targets, mediaEvidence{})
+	isolated.binaryCandidates = append(isolated.binaryCandidates, bytes.Repeat([]byte{0x99}, 32))
+	decoded, err := hex.DecodeString(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isolated.considerCapturedDatabaseKey(decoded) {
+		t.Fatal("fixture key was not accepted in isolated process collector")
+	}
+	aggregate.mergeValidatedFrom(isolated)
+	if len(aggregate.binaryCandidates) != 0 || len(aggregate.binaryFallbackCandidates) != 0 {
+		t.Fatal("unverified process-local candidates crossed the isolation boundary")
+	}
+	keys, ambiguous := aggregate.databaseKeys(targets)
+	if ambiguous != 0 || keys[page.path] != key {
+		t.Fatalf("validated candidate did not cross isolation boundary: keys=%v ambiguous=%d", keys, ambiguous)
+	}
+	if aggregate.validatedDatabaseCandidateCount != isolated.validatedDatabaseCandidateCount {
+		t.Fatalf("validated candidate observations were double-counted during isolation merge: aggregate=%d isolated=%d",
+			aggregate.validatedDatabaseCandidateCount, isolated.validatedDatabaseCandidateCount)
 	}
 }
 
@@ -256,8 +376,8 @@ func TestAmbiguousDatabaseCandidatesAreRejected(t *testing.T) {
 	targets := databaseTargets{
 		bySalt: map[string][]string{salt: {"message.db"}},
 		pages: []databasePage{
-			encryptedDatabasePage(t, key1, salt),
-			encryptedDatabasePage(t, key2, salt),
+			encryptedDatabasePageAt(t, key1, salt, "message.db"),
+			encryptedDatabasePageAt(t, key2, salt, "message.db"),
 		},
 		count: 1,
 	}
@@ -268,5 +388,32 @@ func TestAmbiguousDatabaseCandidatesAreRejected(t *testing.T) {
 	keys, ambiguous := collector.databaseKeys(targets)
 	if len(keys) != 0 || ambiguous != 1 {
 		t.Fatalf("ambiguous candidates were accepted: keys=%v ambiguous=%d", keys, ambiguous)
+	}
+}
+
+func TestCandidateSourcesStopAtTheDocumentedHardCap(t *testing.T) {
+	collector := newCandidateCollector(databaseTargets{bySalt: map[string][]string{}}, mediaEvidence{})
+	var databaseInput strings.Builder
+	for index := 0; index < maxCandidateCount+1; index++ {
+		candidate := make([]byte, 32)
+		binary.LittleEndian.PutUint64(candidate, uint64(index+1))
+		databaseInput.WriteString("x'")
+		databaseInput.WriteString(hex.EncodeToString(candidate))
+		databaseInput.WriteString("';")
+	}
+	collector.scanDatabasePatternsFrom([]byte(databaseInput.String()), "bounded_hex")
+	if len(collector.seenDatabase) != maxCandidateCount || !collector.databaseScanLimited {
+		t.Fatalf("database candidate cap was not enforced: seen=%d limited=%v", len(collector.seenDatabase), collector.databaseScanLimited)
+	}
+
+	media := mediaEvidence{v2Blocks: [][16]byte{{}}, xorCandidates: map[byte]int{}}
+	mediaCollector := newCandidateCollector(databaseTargets{bySalt: map[string][]string{}}, media)
+	var mediaInput strings.Builder
+	for index := 0; index < maxMediaCandidateCount+1; index++ {
+		fmt.Fprintf(&mediaInput, "%016x:", index)
+	}
+	mediaCollector.scanMediaPatterns([]byte(mediaInput.String()))
+	if len(mediaCollector.seenMedia) != maxMediaCandidateCount || !mediaCollector.mediaScanLimited {
+		t.Fatalf("media candidate cap was not enforced: seen=%d limited=%v", len(mediaCollector.seenMedia), mediaCollector.mediaScanLimited)
 	}
 }
