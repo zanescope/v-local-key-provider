@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	windowsmodel "github.com/zanescope/v-local-key-provider/internal/platform/windows"
 )
 
 func liveExpectedBoolean(t *testing.T, name string) bool {
@@ -22,7 +24,7 @@ func liveExpectedBoolean(t *testing.T, name string) bool {
 }
 
 func TestPhase4WindowsLiveAcquisition(t *testing.T) {
-	processesBefore, err := targetProcesses()
+	processesBefore, err := windowsmodel.NewNativeDriver(windowsmodel.NativeRuntime{}).ListProcesses()
 	if err != nil {
 		t.Fatalf("cannot inventory Windows target processes before acquisition: %v", err)
 	}
@@ -34,7 +36,7 @@ func TestPhase4WindowsLiveAcquisition(t *testing.T) {
 	defer clearLiveResponse(&result)
 	assertLiveAcquisition(t, result)
 
-	processesAfter, err := targetProcesses()
+	processesAfter, err := windowsmodel.NewNativeDriver(windowsmodel.NativeRuntime{}).ListProcesses()
 	if err != nil {
 		t.Fatalf("cannot inventory Windows target processes after acquisition: %v", err)
 	}

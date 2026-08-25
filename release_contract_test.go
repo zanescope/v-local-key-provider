@@ -103,10 +103,12 @@ func TestPhase5ReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *test
 
 func TestPhase4WindowsSourceHasNoProcessTerminationPath(t *testing.T) {
 	for _, path := range []string{
-		"windows_acquisition_windows.go", "windows_memory_scan_windows.go", "session_process_windows.go",
-		"windows_binary_evidence_windows.go", "windows_config_cipher_windows.go", "windows_config_cipher_adapter.go",
-		"windows_process_binding_windows.go", "windows_process_binding_adapter_windows.go",
-		"internal/platform/windows/config_cipher.go", "internal/platform/windows/path_binding_windows.go",
+		"windows_acquisition_windows.go", "windows_config_cipher_adapter.go", "runtime_trust_windows.go",
+		"internal/platform/windows/driver.go", "internal/platform/windows/process.go",
+		"internal/platform/windows/native_process_windows.go", "internal/platform/windows/native_evidence_windows.go",
+		"internal/platform/windows/native_binding_windows.go", "internal/platform/windows/native_config_windows.go",
+		"internal/platform/windows/native_memory_windows.go", "internal/platform/windows/config_cipher.go",
+		"internal/platform/windows/path_binding_windows.go",
 	} {
 		payload, err := os.ReadFile(path)
 		if err != nil {

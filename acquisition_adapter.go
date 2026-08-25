@@ -42,6 +42,10 @@ func targetsFromCatalog(catalog databaseCatalog, pages []databasePage) databaseT
 	return acquisitionmodel.TargetsFromCatalog(catalog, pages)
 }
 
+func acquisitionMissingTargets(targets databaseTargets, existing map[string]string) databaseTargets {
+	return acquisitionmodel.MissingTargets(targets, existing)
+}
+
 func databaseDiscoveryPolicy(remaining budget) catalogmodel.PlatformPolicy {
 	return catalogmodel.PlatformPolicy{
 		FileIdentity:       platformFileIdentity,

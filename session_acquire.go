@@ -3,17 +3,7 @@ package provider
 import "time"
 
 func missingOnlyTargets(targets databaseTargets, existing map[string]string) databaseTargets {
-	if len(existing) == 0 {
-		return targets
-	}
-	subsetCatalog, missingPaths := missingCatalog(targets.Catalog, existing)
-	pages := make([]databasePage, 0, len(missingPaths))
-	for _, page := range targets.Pages {
-		if missingPaths[page.Path] {
-			pages = append(pages, page)
-		}
-	}
-	return targetsFromCatalog(subsetCatalog, pages)
+	return acquisitionMissingTargets(targets, existing)
 }
 
 func mergeSessionDiagnosticEvidence(existing *response, next *diagnostics) {

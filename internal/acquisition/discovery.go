@@ -230,6 +230,50 @@ func TargetsFromCatalog(catalog catalogmodel.Catalog, pages []DatabasePage) Targ
 	return targetsFromCatalog(catalog, pages)
 }
 
+// MissingTargets returns the exact required database subset that has not
+// already been covered. Existing target pages are referenced as read-only
+// evidence and are not copied.
+func MissingTargets(targets Targets, existing map[string]string) Targets {
+	if len(existing) == 0 {
+		return targets
+	}
+	subset, missingPaths := catalogmodel.MissingRequired(targets.Catalog, existing)
+	pages := make([]DatabasePage, 0, len(missingPaths))
+	for _, page := range targets.Pages {
+		if missingPaths[page.Path] {
+			pages = append(pages, page)
+		}
+	}
+	return targetsFromCatalog(subset, pages)
+}
+
+// TargetsForProfiles filters a target set to pages whose registered profile is
+// eligible for one exact platform recipe.
+func TargetsForProfiles(targets Targets, profiles []string) Targets {
+	allowedProfiles := make(map[string]bool, len(profiles))
+	for _, profile := range profiles {
+		allowedProfiles[profile] = true
+	}
+	allowedPaths := map[string]bool{}
+	pages := make([]DatabasePage, 0, len(targets.Pages))
+	for _, page := range targets.Pages {
+		if page.ProfileID == "" && len(allowedProfiles) > 0 || allowedProfiles[page.ProfileID] {
+			allowedPaths[page.Path] = true
+			pages = append(pages, page)
+		}
+	}
+	subset := catalogmodel.Catalog{
+		CatalogID:       targets.Catalog.CatalogID,
+		DiscoveryErrors: append([]string(nil), targets.Catalog.DiscoveryErrors...),
+	}
+	for _, database := range targets.Catalog.Databases {
+		if allowedPaths[database.RelativePath] {
+			subset.Databases = append(subset.Databases, database)
+		}
+	}
+	return targetsFromCatalog(subset, pages)
+}
+
 func DiscoverDatabaseTargets(dbDir string, remaining budget, catalogKey []byte, policy catalogmodel.PlatformPolicy) (Targets, error) {
 	if policy.AcquisitionExpired == nil {
 		policy.AcquisitionExpired = remaining.Expired

@@ -68,3 +68,68 @@ func TestDaemonImplementationStaysBehindInternalBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestWindowsAcquisitionImplementationStaysBehindInternalBoundary(t *testing.T) {
+	legacyRoot := []string{
+		"windows_binary_evidence_windows.go",
+		"windows_config_cipher_windows.go",
+		"windows_memory_policy_adapter_windows.go",
+		"windows_memory_scan_windows.go",
+		"windows_process_binding_adapter_windows.go",
+		"windows_process_binding_windows.go",
+		"session_process_windows.go",
+	}
+	for _, name := range legacyRoot {
+		if _, err := os.Stat(name); err == nil || !os.IsNotExist(err) {
+			t.Errorf("Windows implementation returned to the Provider root: %s", name)
+		}
+	}
+
+	requiredInternal := []string{
+		"driver.go", "process.go", "native_process_windows.go", "native_evidence_windows.go",
+		"native_binding_windows.go", "native_config_windows.go", "native_memory_windows.go",
+	}
+	for _, name := range requiredInternal {
+		if _, err := os.Stat(filepath.Join("internal", "platform", "windows", name)); err != nil {
+			t.Errorf("internal Windows acquisition implementation is missing %s: %v", name, err)
+		}
+	}
+
+	adapter, err := os.ReadFile("windows_acquisition_windows.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"syscall", "unsafe", "OpenProcess", "ReadProcessMemory", "CreateToolhelp32Snapshot"} {
+		if strings.Contains(string(adapter), forbidden) {
+			t.Errorf("Windows composition adapter contains native implementation primitive %q", forbidden)
+		}
+	}
+
+	entries, err := os.ReadDir(filepath.Join("internal", "platform", "windows"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := token.NewFileSet()
+	for _, entry := range entries {
+		name := entry.Name()
+		if entry.IsDir() || !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
+			continue
+		}
+		path := filepath.Join("internal", "platform", "windows", name)
+		parsed, err := parser.ParseFile(files, path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Errorf("cannot parse %s: %v", path, err)
+			continue
+		}
+		for _, imported := range parsed.Imports {
+			value, err := strconv.Unquote(imported.Path.Value)
+			if err != nil {
+				t.Errorf("cannot decode import in %s: %v", path, err)
+				continue
+			}
+			if value == "github.com/zanescope/v-local-key-provider" {
+				t.Errorf("%s imports the Provider composition root", path)
+			}
+		}
+	}
+}

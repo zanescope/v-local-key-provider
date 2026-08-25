@@ -1,6 +1,6 @@
 //go:build windows
 
-package provider
+package windows
 
 import (
 	"strings"
@@ -8,16 +8,17 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 	"golang.org/x/sys/windows"
 )
 
 const (
-	maxWindowsSystemHandleBuffer = 64 * 1024 * 1024
-	maxWindowsHandlesPerProcess  = 16_384
-	maxWindowsObservedFilePaths  = 4_096
+	maxSystemHandleBuffer = 64 * 1024 * 1024
+	maxHandlesPerProcess  = 16_384
+	maxObservedFilePaths  = 4_096
 )
 
-type windowsSystemHandleEntry struct {
+type systemHandleEntry struct {
 	Object                uintptr
 	UniqueProcessID       uintptr
 	HandleValue           uintptr
@@ -28,17 +29,17 @@ type windowsSystemHandleEntry struct {
 	Reserved              uint32
 }
 
-func windowsTargetHandleValues(processes []windowsProcessEvidence, remaining budget) map[uint32][]windows.Handle {
+func targetHandleValues(processes []ProcessEvidence, remaining workbudget.Budget) map[uint32][]windows.Handle {
 	targets := map[uint32]bool{}
 	for _, process := range processes {
-		targets[process.Process.pid] = true
+		targets[process.Process.PID] = true
 	}
-	if len(targets) == 0 || remaining.expired() {
+	if len(targets) == 0 || remaining.Expired() {
 		return nil
 	}
 	size := uint32(1024 * 1024)
 	var buffer []byte
-	for size <= maxWindowsSystemHandleBuffer && !remaining.expired() {
+	for size <= maxSystemHandleBuffer && !remaining.Expired() {
 		buffer = make([]byte, size)
 		var needed uint32
 		err := windows.NtQuerySystemInformation(
@@ -50,7 +51,7 @@ func windowsTargetHandleValues(processes []windowsProcessEvidence, remaining bud
 		if err != windows.STATUS_INFO_LENGTH_MISMATCH {
 			return nil
 		}
-		if needed > size && needed <= maxWindowsSystemHandleBuffer {
+		if needed > size && needed <= maxSystemHandleBuffer {
 			size = needed
 		} else {
 			size *= 2
@@ -61,18 +62,18 @@ func windowsTargetHandleValues(processes []windowsProcessEvidence, remaining bud
 		return nil
 	}
 	headerSize := 2 * unsafe.Sizeof(uintptr(0))
-	entrySize := unsafe.Sizeof(windowsSystemHandleEntry{})
+	entrySize := unsafe.Sizeof(systemHandleEntry{})
 	count := *(*uintptr)(unsafe.Pointer(&buffer[0]))
 	available := uintptr((len(buffer) - int(headerSize)) / int(entrySize))
 	if count > available {
 		count = available
 	}
 	result := map[uint32][]windows.Handle{}
-	for index := uintptr(0); index < count && !remaining.expired(); index++ {
+	for index := uintptr(0); index < count && !remaining.Expired(); index++ {
 		offset := headerSize + index*entrySize
-		entry := *(*windowsSystemHandleEntry)(unsafe.Pointer(&buffer[offset]))
+		entry := *(*systemHandleEntry)(unsafe.Pointer(&buffer[offset]))
 		pid := uint32(entry.UniqueProcessID)
-		if !targets[pid] || len(result[pid]) >= maxWindowsHandlesPerProcess {
+		if !targets[pid] || len(result[pid]) >= maxHandlesPerProcess {
 			continue
 		}
 		result[pid] = append(result[pid], windows.Handle(entry.HandleValue))
@@ -80,8 +81,8 @@ func windowsTargetHandleValues(processes []windowsProcessEvidence, remaining bud
 	return result
 }
 
-func windowsObservedProcessPaths(pid uint32, handles []windows.Handle, remaining budget) []string {
-	if len(handles) == 0 || remaining.expired() {
+func observedProcessPaths(pid uint32, handles []windows.Handle, remaining workbudget.Budget) []string {
+	if len(handles) == 0 || remaining.Expired() {
 		return nil
 	}
 	process, err := windows.OpenProcess(windows.PROCESS_DUP_HANDLE, false, pid)
@@ -92,7 +93,7 @@ func windowsObservedProcessPaths(pid uint32, handles []windows.Handle, remaining
 	paths := make([]string, 0, 16)
 	seen := map[string]bool{}
 	for _, source := range handles {
-		if remaining.expired() || len(paths) >= maxWindowsObservedFilePaths {
+		if remaining.Expired() || len(paths) >= maxObservedFilePaths {
 			break
 		}
 		var duplicated windows.Handle
@@ -112,7 +113,7 @@ func windowsObservedProcessPaths(pid uint32, handles []windows.Handle, remaining
 		if pathErr != nil || length == 0 || length >= uint32(len(buffer)) {
 			continue
 		}
-		path := normalizeWindowsObservedPath(syscall.UTF16ToString(buffer[:length]))
+		path := NormalizeObservedPath(syscall.UTF16ToString(buffer[:length]))
 		key := strings.ToLower(path)
 		if path == "." || seen[key] {
 			continue
@@ -123,12 +124,12 @@ func windowsObservedProcessPaths(pid uint32, handles []windows.Handle, remaining
 	return paths
 }
 
-func windowsBindProcessEvidence(processes []windowsProcessEvidence, accountDir, dbDir string, remaining budget) []windowsProcessEvidence {
-	bindingBudget := remaining.cappedFor(2 * time.Second)
-	handles := windowsTargetHandleValues(processes, bindingBudget)
+func (driver *nativeDriver) BindEvidence(processes []ProcessEvidence, accountDir, dbDir string, remaining workbudget.Budget) []ProcessEvidence {
+	bindingBudget := remaining.CappedFor(2 * time.Second)
+	handles := targetHandleValues(processes, bindingBudget)
 	for index := range processes {
-		paths := windowsObservedProcessPaths(processes[index].Process.pid, handles[processes[index].Process.pid], bindingBudget)
-		processes[index].Binding = classifyWindowsObservedPaths(paths, accountDir, dbDir)
+		paths := observedProcessPaths(processes[index].Process.PID, handles[processes[index].Process.PID], bindingBudget)
+		processes[index].Binding = ClassifyObservedPaths(paths, accountDir, dbDir)
 		for pathIndex := range paths {
 			paths[pathIndex] = ""
 		}

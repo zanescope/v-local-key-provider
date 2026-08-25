@@ -268,3 +268,33 @@ func TestMacOSKVCommRootsRemainAvailableWithWindowsAPPDATA(t *testing.T) {
 	}
 	t.Fatalf("Darwin kvcomm roots were suppressed by APPDATA: %v", roots)
 }
+
+func TestMissingTargetsKeepsOnlyUncoveredRequiredPages(t *testing.T) {
+	targets := TargetsFromCatalog(catalogmodel.Catalog{CatalogID: "catalog", Databases: []catalogmodel.Database{
+		{DatabaseID: "a", RelativePath: "a.db", Salt: "aa", Classification: catalogmodel.ClassificationEncrypted, RequiredForKeyCoverage: true},
+		{DatabaseID: "b", RelativePath: "b.db", Salt: "bb", Classification: catalogmodel.ClassificationEncrypted, RequiredForKeyCoverage: true},
+		{DatabaseID: "plain", RelativePath: "plain.db", Classification: catalogmodel.ClassificationPlaintext},
+	}}, []DatabasePage{{Path: "a.db", Salt: "aa"}, {Path: "b.db", Salt: "bb"}})
+
+	missing := MissingTargets(targets, map[string]string{"a.db": strings.Repeat("1", 64)})
+	if missing.Count != 1 || len(missing.Pages) != 1 || missing.Pages[0].Path != "b.db" ||
+		len(missing.BySalt["aa"]) != 0 || len(missing.Catalog.Databases) != 1 {
+		t.Fatalf("missing target subset is invalid: %+v", missing)
+	}
+}
+
+func TestTargetsForProfilesKeepsOnlyRecipeCompatiblePages(t *testing.T) {
+	targets := TargetsFromCatalog(catalogmodel.Catalog{CatalogID: "catalog", Databases: []catalogmodel.Database{
+		{DatabaseID: "a", RelativePath: "a.db", Salt: "aa", Classification: catalogmodel.ClassificationEncrypted, RequiredForKeyCoverage: true},
+		{DatabaseID: "b", RelativePath: "b.db", Salt: "bb", Classification: catalogmodel.ClassificationEncrypted, RequiredForKeyCoverage: true},
+	}}, []DatabasePage{
+		{Path: "a.db", Salt: "aa", ProfileID: "profile-a"},
+		{Path: "b.db", Salt: "bb", ProfileID: "profile-b"},
+	})
+
+	filtered := TargetsForProfiles(targets, []string{"profile-b"})
+	if filtered.Count != 1 || len(filtered.Pages) != 1 || filtered.Pages[0].Path != "b.db" ||
+		len(filtered.Catalog.Databases) != 1 || filtered.Catalog.Databases[0].DatabaseID != "b" {
+		t.Fatalf("profile target subset is invalid: %+v", filtered)
+	}
+}

@@ -84,7 +84,7 @@ go test -tags=live_regression -run '^TestPhase3MacOSLiveAcquisition$' -count=1 .
 
 | ID | 回归点 | 证据 |
 | --- | --- | --- |
-| P4-01 | Weixin 根进程/子进程筛选与实际 x64/ARM64 架构 | platform Windows tests，包括 `TestPhase4WindowsReportsActualCurrentProcessArchitecture` |
+| P4-01 | Weixin 根进程/子进程筛选与实际 x64/ARM64 架构 | `internal/platform/windows` tests，包括 `TestPhase4WindowsReportsActualCurrentProcessArchitecture` |
 | P4-02 | 已登记 4.1.x `Config.Cipher` fingerprint 主路径 | `TestPhase4WindowsRegistryRequiresExactMachineEvidence`、extractor 边界测试；专用 x64/ARM64 真机断言精确 registry route |
 | P4-03 | 未登记 fingerprint 或固定结构失效时安全 fallback | CLI `TestPhase4WindowsEvidenceCannotMisleadTheAgent`；专用真机分别断言 fallback route 与准确诊断 |
 | P4-04 | 多 Weixin/WeChat、多账号和部分进程 access denied | `TestMergeValidatedCollectorDoesNotMergeUnverifiedProcessCandidates`、Windows handle-path 分类与 opaque process provenance 测试；专用多进程测试账号 |

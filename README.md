@@ -261,7 +261,7 @@ go vet ./...
 go build -trimpath -o build/v-local-key-provider.exe ./cmd/v-local-key-provider
 ```
 
-目录边界为：`cmd/v-local-key-provider` 只负责接收 linker 注入的版本/发行标记并启动命令；仓库根目录是可测试的 `provider` 编排包；协议、catalog、crypto、credential、diagnostics、release evidence、session 与可移植平台策略分别由 `internal/*` 持有。Darwin Mach/cgo 和少量 Windows handle 代码仍是 build-tagged Provider adapter。
+目录边界为：`cmd/v-local-key-provider` 只负责接收 linker 注入的版本/发行标记并启动命令；仓库根目录是可测试的 `provider` 编排与信任策略注入层；协议、catalog、crypto、credential、diagnostics、release evidence、session、acquisition 以及 Windows process/memory driver 分别由 `internal/*` 持有。Windows 根适配器只注入可执行文件哈希、Authenticode primary signer、发布 registry 与敏感内存回调；Darwin Mach/cgo 仍是 build-tagged Provider adapter。
 
 macOS 构建应该保持 cgo 开启，并使用与目标机器匹配的架构：
 

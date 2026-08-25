@@ -91,24 +91,7 @@ func SameScopes(left, right []string) bool {
 // already covered. Page evidence is intentionally filtered by the caller so
 // this policy cannot retain or copy sensitive page buffers.
 func MissingCatalog(catalog catalogmodel.Catalog, existing map[string]string) (catalogmodel.Catalog, map[string]bool) {
-	if len(existing) == 0 {
-		return catalog, nil
-	}
-	missingPaths := map[string]bool{}
-	subset := catalogmodel.Catalog{
-		CatalogID: catalog.CatalogID, DiscoveryErrors: append([]string(nil), catalog.DiscoveryErrors...),
-	}
-	for _, database := range catalog.Databases {
-		if !database.RequiredForKeyCoverage {
-			continue
-		}
-		if _, found := existing[database.RelativePath]; found {
-			continue
-		}
-		missingPaths[database.RelativePath] = true
-		subset.Databases = append(subset.Databases, database)
-	}
-	return subset, missingPaths
+	return catalogmodel.MissingRequired(catalog, existing)
 }
 
 func AppendUniqueStrings(values []string, additions ...string) []string {

@@ -301,3 +301,28 @@ func Discover(dbDir string, key []byte, policy PlatformPolicy) (Catalog, []Page,
 	result.CatalogID = ID(key, result.Databases, result.DiscoveryErrors)
 	return result, pages, nil
 }
+
+// MissingRequired returns the exact required database subset that is not
+// already covered. It carries catalog identity and discovery errors forward
+// but does not own or copy page evidence.
+func MissingRequired(catalog Catalog, existing map[string]string) (Catalog, map[string]bool) {
+	if len(existing) == 0 {
+		return catalog, nil
+	}
+	missingPaths := map[string]bool{}
+	subset := Catalog{
+		CatalogID:       catalog.CatalogID,
+		DiscoveryErrors: append([]string(nil), catalog.DiscoveryErrors...),
+	}
+	for _, database := range catalog.Databases {
+		if !database.RequiredForKeyCoverage {
+			continue
+		}
+		if _, found := existing[database.RelativePath]; found {
+			continue
+		}
+		missingPaths[database.RelativePath] = true
+		subset.Databases = append(subset.Databases, database)
+	}
+	return subset, missingPaths
+}

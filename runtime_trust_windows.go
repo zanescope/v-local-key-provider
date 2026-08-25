@@ -67,6 +67,42 @@ func verifiedWindowsSignerSHA256(data *windows.WinTrustData) (string, error) {
 	return hex.EncodeToString(digest[:]), nil
 }
 
+// windowsAuthenticodeEvidence verifies the file with WinTrust and binds the
+// result to WinTrust's actual primary signer. It is injected into the internal
+// Windows process driver because release trust remains a composition-root
+// responsibility.
+func windowsAuthenticodeEvidence(path string) (string, string) {
+	pathPointer, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return windowsSigningUnavailable, ""
+	}
+	fileInfo := windows.WinTrustFileInfo{
+		Size: uint32(unsafe.Sizeof(windows.WinTrustFileInfo{})), FilePath: pathPointer,
+	}
+	data := windows.WinTrustData{
+		Size: uint32(unsafe.Sizeof(windows.WinTrustData{})), UIChoice: windows.WTD_UI_NONE,
+		RevocationChecks: windows.WTD_REVOKE_NONE, UnionChoice: windows.WTD_CHOICE_FILE,
+		FileOrCatalogOrBlobOrSgnrOrCert: unsafe.Pointer(&fileInfo), StateAction: windows.WTD_STATEACTION_VERIFY,
+		ProvFlags: windows.WTD_CACHE_ONLY_URL_RETRIEVAL | windows.WTD_REVOCATION_CHECK_NONE,
+		UIContext: windows.WTD_UICONTEXT_EXECUTE,
+	}
+	verifyErr := windows.WinVerifyTrustEx(windows.InvalidHWND, &windows.WINTRUST_ACTION_GENERIC_VERIFY_V2, &data)
+	signer := ""
+	var signerErr error
+	if verifyErr == nil {
+		signer, signerErr = verifiedWindowsSignerSHA256(&data)
+	}
+	data.StateAction = windows.WTD_STATEACTION_CLOSE
+	_ = windows.WinVerifyTrustEx(windows.InvalidHWND, &windows.WINTRUST_ACTION_GENERIC_VERIFY_V2, &data)
+	if verifyErr != nil {
+		return windowsSigningInvalid, ""
+	}
+	if signerErr != nil || !validWindowsSHA256(signer) {
+		return windowsSigningUnavailable, ""
+	}
+	return windowsSigningVerified, signer
+}
+
 func expectedWindowsSignerSHA256() (string, error) {
 	expected := strings.ToLower(strings.TrimSpace(releaseSignerSHA256))
 	decoded, err := hex.DecodeString(expected)

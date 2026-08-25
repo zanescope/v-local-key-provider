@@ -4,6 +4,29 @@
 
 审计条目按时间倒序记录。每条结论只对其标明的代码基线成立；后续复核可以取代旧结论，但不得静默改写历史。
 
+## 2026-08-25 D-1 Windows 原生平台垂直切片续作
+
+本轮以 acquisition 切片提交 `7dd3607` 为起点，落实上一节约定的 process/memory driver seam，并选择 Windows 一侧整体迁移；没有改写 Phase 0-5 的能力或发布门禁。
+
+### 实际迁移结果
+
+- `internal/platform/windows` 现在统一拥有 Windows acquisition 编排、进程模型与稳定实例 ID、Toolhelp 发现、进程句柄生命周期、可执行文件版本/产品证据、账号路径绑定、Config.Cipher 模块扫描以及分阶段虚拟内存扫描。`NativeDriver` 把进程/内存输入输出从平台编排中隔离，可用 fake driver 在非 Windows runner 上验证。
+- 根 `windows_acquisition_windows.go` 从 345 行实现收敛为 29 行 composition adapter，只注入 acquisition runtime、发布 registry/policy、安全可执行文件哈希、WinTrust primary signer 证据与敏感内存回调。原 `windows_binary_evidence_windows.go`、`windows_config_cipher_windows.go`、`windows_memory_scan_windows.go`、`windows_process_binding_windows.go`、两个对应 policy adapter 及 `session_process_windows.go` 已删除，不保留双实现。
+- missing-required Catalog 规则进入 `internal/catalog`，missing-only page 与 profile-compatible target subset 由 `internal/acquisition` 组装，session 与 Windows driver 共用同一过滤语义。Windows 平台测试跟随实现迁入内部包；新增架构回归，禁止原生 handle/memory 实现回流根适配器或内部包反向 import Provider。
+- 扫描重叠 tail 改为先登记完整 backing storage，再使用零长度视图；Config.Cipher 与通用 memory stage 都会在退出时清零并解除完整 storage 的敏感内存跟踪。
+- 根目录生产 Go 文件由 67 个降至 60 个，根测试由 26 个降至 25 个；`internal/platform/windows` 现包含 11 个生产文件与 6 个测试文件。
+
+### 本轮验证
+
+| 检查 | 结果 |
+| --- | --- |
+| Windows 原生 | 固定工作区 Go cache/temp 下 `go test ./...` 全包通过；`go vet ./...` 通过。首次使用新的临时目录时有一个测试二进制被宿主 Application Control 拒绝，改回此前已验证的固定目录后全绿，不是断言或编译失败。 |
+| WSL Go | 原生 `/tmp` 下 `go test ./...` 与 `go test -race ./...` 全包通过；包含可移植 fake `NativeDriver` 编排回归。 |
+| 跨平台 build tags | Darwin amd64/arm64（`CGO_ENABLED=0`）与 Windows/ARM64 全包构建通过；仍只是编译检查，不冒充 Darwin cgo 或真机执行。 |
+| npm / 静态 | Provider npm 13/13；`git diff --check`、受控 `gofmt -l`、根适配器 native primitive 扫描和内部反向依赖扫描通过。 |
+
+这次切片没有解除空生产 registry、Windows 真机 candidate evidence、Darwin cgo/真机、最终签名件、notarization 或 Trusted Publishing 门禁。若继续降低根目录密度，下一步应对 Darwin 做同样的原生平台垂直切片；由于其 Mach/cgo 路径不能由无 cgo 交叉编译替代，提交前仍须明确保留 Darwin cgo runner/真机门禁。
+
 ## 2026-08-25 D-1 acquisition 垂直切片续作
 
 本轮以 daemon 切片提交 `b2677f0` 为起点，落实上一节约定的 `internal/acquisition` 模型与 platform driver seam；没有改写 Phase 0-5 的能力门禁。

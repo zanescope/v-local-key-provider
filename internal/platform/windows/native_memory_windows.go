@@ -6,6 +6,9 @@ import (
 	"runtime"
 	"syscall"
 	"unsafe"
+
+	acquisitionmodel "github.com/zanescope/v-local-key-provider/internal/acquisition"
+	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
 var (
@@ -95,11 +98,12 @@ func ScanProcessStage(
 	var scanned uint64
 	limited := false
 	buffer := make([]byte, ReadChunkSize)
-	tail := make([]byte, 0, tailLength)
+	tailStorage := make([]byte, tailLength)
+	tail := tailStorage[:0]
 	callbacks.mark(buffer)
-	callbacks.mark(tail)
+	callbacks.mark(tailStorage)
 	defer callbacks.clear(buffer)
-	defer callbacks.clear(tail)
+	defer callbacks.clear(tailStorage)
 	reader := func(pointer uint64, destination []byte) int {
 		return ReadProcessMemory(handle, uintptr(pointer), destination)
 	}
@@ -162,4 +166,40 @@ func ScanProcessStage(
 		limited = true
 	}
 	return scanned, limited
+}
+
+func (driver *nativeDriver) ScanStage(handle Handle, collector *acquisitionmodel.Collector, limit uint64, stage string, remaining workbudget.Budget) (uint64, bool) {
+	seenPointers := map[uint64]bool{}
+	return ScanProcessStage(
+		syscall.Handle(handle), limit, stage,
+		StageTailLength(stage, acquisitionmodel.SaltNeighborhoodWindow, acquisitionmodel.ScanTailLength),
+		acquisitionmodel.MaxScanRegionBytes,
+		ScanStageCallbacks{
+			Expired:        remaining.Expired,
+			MarkSensitive:  driver.runtime.Sensitive.mark,
+			ClearSensitive: driver.runtime.Sensitive.clear,
+			ScanChunk: func(stage string, regionType uint32, combined []byte, reader MemoryReader) {
+				switch stage {
+				case "structured_key_object":
+					if regionType == MemImage {
+						collector.ScanInternalXORKeys(combined)
+					}
+					collector.CollectKeyObjects(combined, seenPointers, func(pointer uint64, buffer []byte) int {
+						return reader(pointer, buffer)
+					})
+				case "salt_neighborhood":
+					collector.ScanSaltNeighborhood(combined)
+				case "bounded_writable_heap":
+					collector.ScanDatabasePatternsFrom(combined, "bounded_heap")
+					collector.ScanMediaPatterns(combined)
+				case "bounded_readonly":
+					collector.ScanDatabasePatternsFrom(combined, "bounded_readonly")
+					collector.ScanMediaPatterns(combined)
+				case "bounded_hex":
+					collector.ScanDatabasePatternsFrom(combined, "bounded_hex")
+					collector.ScanMediaPatterns(combined)
+				}
+			},
+		},
+	)
 }

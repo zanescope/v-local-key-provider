@@ -61,3 +61,20 @@ func TestDiscoverRequiresPlatformSafetyPolicy(t *testing.T) {
 		t.Fatal("missing platform policy was accepted")
 	}
 }
+
+func TestMissingRequiredPreservesIdentityAndFiltersCoverage(t *testing.T) {
+	catalog := Catalog{CatalogID: "catalog", DiscoveryErrors: []string{"evidence"}, Databases: []Database{
+		{DatabaseID: "a", RelativePath: "a.db", RequiredForKeyCoverage: true},
+		{DatabaseID: "b", RelativePath: "b.db", RequiredForKeyCoverage: true},
+		{DatabaseID: "plain", RelativePath: "plain.db"},
+	}}
+	subset, paths := MissingRequired(catalog, map[string]string{"a.db": "key"})
+	if subset.CatalogID != catalog.CatalogID || len(subset.DiscoveryErrors) != 1 ||
+		len(subset.Databases) != 1 || subset.Databases[0].DatabaseID != "b" || !paths["b.db"] || paths["a.db"] {
+		t.Fatalf("missing required catalog subset is invalid: subset=%+v paths=%v", subset, paths)
+	}
+	subset.DiscoveryErrors[0] = "changed"
+	if catalog.DiscoveryErrors[0] != "evidence" {
+		t.Fatal("missing required subset retained mutable discovery error storage")
+	}
+}

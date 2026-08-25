@@ -13,10 +13,6 @@ func sameScopes(left, right []string) bool {
 	return sessionmodel.SameScopes(left, right)
 }
 
-func missingCatalog(catalog databaseCatalog, existing map[string]string) (databaseCatalog, map[string]bool) {
-	return sessionmodel.MissingCatalog(catalog, existing)
-}
-
 func appendUniqueStrings(values []string, additions ...string) []string {
 	return sessionmodel.AppendUniqueStrings(values, additions...)
 }

@@ -152,15 +152,21 @@ func TestPhase4WindowsProductIdentityRequiresSignedVersionMetadata(t *testing.T)
 }
 
 func TestPhase4WindowsAuthenticodeEvidenceUsesVerifiedPrimarySigner(t *testing.T) {
-	payload, err := os.ReadFile("windows_binary_evidence_windows.go")
+	rootPayload, err := os.ReadFile("runtime_trust_windows.go")
 	if err != nil {
 		t.Fatal(err)
 	}
-	source := string(payload)
-	if !strings.Contains(source, "verifiedWindowsSignerSHA256(&data)") {
+	nativePayload, err := os.ReadFile("internal/platform/windows/native_evidence_windows.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootSource := string(rootPayload)
+	nativeSource := string(nativePayload)
+	if !strings.Contains(rootSource, "verifiedWindowsSignerSHA256(&data)") ||
+		!strings.Contains(nativeSource, "runtime.AuthenticodeEvidence(path)") {
 		t.Fatal("Windows process evidence is not bound to WinTrust's verified primary signer")
 	}
-	if strings.Contains(source, "CertEnumCertificatesInStore") {
+	if strings.Contains(rootSource, "CertEnumCertificatesInStore") || strings.Contains(nativeSource, "CertEnumCertificatesInStore") {
 		t.Fatal("Windows process evidence still selects an arbitrary certificate from the PKCS#7 store")
 	}
 }
