@@ -23,6 +23,16 @@ func TestDarwinVersionSupportSelectsMultipleLayouts(t *testing.T) {
 	}
 }
 
+func TestDarwinProcessExecutablePreservesSpacesInBundlePathFallback(t *testing.T) {
+	process := darwinProcess{
+		command: "/Users/example/My Applications/WeChat.app/Contents/MacOS/WeChat --flag",
+	}
+	want := "/Users/example/My Applications/WeChat.app/Contents/MacOS/WeChat"
+	if got := darwinProcessExecutable(process); got != want {
+		t.Fatalf("Darwin process executable = %q, want %q", got, want)
+	}
+}
+
 func TestDarwinHookPythonSourceUsesArchitectureRegisters(t *testing.T) {
 	x86 := darwinHookPythonSource("amd64")
 	if !strings.Contains(x86, `"rcx"`) || !strings.Contains(x86, `"r8"`) ||

@@ -38,6 +38,7 @@ func TestPhase3DarwinSourceDoesNotInferTargetArchitectureFromProviderBuild(t *te
 func TestPhase5DarwinSubprocessesUseCentralBoundedRunner(t *testing.T) {
 	for _, path := range []string{
 		"platform_darwin.go", "platform_helper_darwin.go", "runtime_trust_darwin.go", "session_process_darwin.go",
+		"internal/platform/darwin/process_discovery.go", "internal/platform/darwin/native_process_darwin.go",
 	} {
 		payload, err := os.ReadFile(path)
 		if err != nil {
@@ -72,6 +73,11 @@ func TestPhase3ProviderNeverExecutesASIPStateChange(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	internalPaths, err := filepath.Glob(filepath.Join("internal", "platform", "darwin", "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths = append(paths, internalPaths...)
 	for _, path := range paths {
 		if strings.HasSuffix(path, "_test.go") {
 			continue

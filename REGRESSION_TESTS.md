@@ -53,7 +53,7 @@
 
 ## Phase 3：macOS 三模式
 
-默认 macOS CI 必须运行 `go test ./...` 和 `go vet ./...`，覆盖：进程过滤、实际架构寄存器、`CCCrypt*`/`CCKeyDerivationPBKDF` 双观察、rounds=256000 passphrase、rounds=2 raw key、wait-for 先装 hook、helper deadline/loopback、临时 secret 文件禁止和生命周期清理。
+默认 macOS CI 必须运行 `go test ./...` 和 `go vet ./...`，覆盖：`internal/platform/darwin` 的 process/Mach driver、进程过滤和隔离扫描，以及 build-tagged hook 的实际架构寄存器、`CCCrypt*`/`CCKeyDerivationPBKDF` 双观察、rounds=256000 passphrase、rounds=2 raw key、wait-for 先装 hook、helper deadline/loopback、临时 secret 文件禁止和生命周期清理。
 
 本节 P3-04 是尚未启用的 Shadow 目标态验收项，不是当前能力声明。当前构建必须把 Shadow 报告为 `unavailable_in_build`，保留 `standard -> shadow -> sip_disabled` 的优先级，并按 P3-05/P3-10 在该槽位终态不可用时允许用户选择 SIP fallback；绝不能伪造 `attempted_failed`。
 

@@ -4,6 +4,29 @@
 
 审计条目按时间倒序记录。每条结论只对其标明的代码基线成立；后续复核可以取代旧结论，但不得静默改写历史。
 
+## 2026-08-25 D-1 Darwin Mach 平台垂直切片续作
+
+本轮以 Windows 平台切片提交 `6b9a5b7` 为起点，迁移 Darwin acquisition pipeline、进程发现与 Mach 只读内存实现；没有改写 Phase 3 能力声明或 Phase 5 发布门禁。
+
+### 实际迁移结果
+
+- `internal/platform/darwin` 现在拥有 acquisition driver、线性 hook/refresh/static/finalize/assemble pipeline、`ps -> launchctl` 有界进程发现、进程/native seam、Mach task-port 生命周期、虚拟内存区域遍历与进程隔离 collector。fake `NativeDriver` 可在非 Darwin runner 上验证编排、扫描生命周期和 registry 深拷贝。
+- 根 `platform_darwin.go` 从 613 行实现收敛为 58 行 composition adapter，只注入 acquisition runtime、发布 registry/policy、受限命令执行器、代码身份/摘要证据、动态 hook、SIP 状态与敏感内存回调。旧 `darwinAcquisitionPipeline`、`scanDarwinProcess` 和根层 `task_for_pid`/`mach_vm_*` 实现已删除，不保留双实现。
+- Mach 扫描的 read buffer、完整 tail backing storage 与每个 combined chunk 现在都登记为敏感内存，并在退出或每轮消费后清零；tail 使用完整 backing storage 登记后再建立零长度视图，避免只清理当前长度。
+- 原根 `platform_darwin_test.go` 中重复的 process parser 测试由内部 owner 覆盖，唯一的 bundle 空格路径回归迁入 hook 测试；根测试由 25 个降至 24 个。`internal/platform/darwin` 由 3 个生产文件/2 个测试文件增至 8 个生产文件/4 个测试文件。
+- 动态 LLDB hook、目标 binary evidence 采集及 session process fingerprint 仍为 build-tagged 根实现，本轮通过 callback 接入内部 driver；`platform_darwin_hook.go` 由 912 行降至 863 行。它们是下一独立切片，不把本次 Mach/pipeline 迁移误报为整个 Darwin God-file 已清零。
+
+### 本轮验证
+
+| 检查 | 结果 |
+| --- | --- |
+| Windows 原生 | 固定工作区 Go cache/temp 下 `go test -count=1 ./...` 全包通过；`go vet ./...` 通过。 |
+| WSL Go | 原生 `/tmp` 下 `go test -race ./...` 全包通过；包含可移植 fake Darwin `NativeDriver` 编排回归。 |
+| build tags / 静态 CGO | Darwin amd64/arm64（`CGO_ENABLED=0`）与 Windows/ARM64 全包构建通过；Darwin/arm64 `CGO_ENABLED=1 go list` 将 `native_memory_darwin.go` 识别为唯一内部 CGO 文件且无 invalid Go file。后者只是 build-tag/语法解析，不是 CGO 编译或 Mach 执行。 |
+| npm / 静态 | Provider npm 13/13；`git diff --check`、受控 `gofmt -l`、根适配器 native primitive 扫描和内部反向依赖扫描通过。 |
+
+这次切片没有解除空生产 registry、Darwin amd64/arm64 CGO runner、Mach 真机 acquisition、签名/notarization、最终发布件或 Trusted Publishing 门禁。提交可证明通用编排与所有权边界，但不得作为 macOS 真机正确性证据。
+
 ## 2026-08-25 D-1 Windows 原生平台垂直切片续作
 
 本轮以 acquisition 切片提交 `7dd3607` 为起点，落实上一节约定的 process/memory driver seam，并选择 Windows 一侧整体迁移；没有改写 Phase 0-5 的能力或发布门禁。

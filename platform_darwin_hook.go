@@ -231,32 +231,6 @@ func darwinCollectBinaryEvidence(process darwinProcess) darwinBinaryEvidence {
 	return evidence
 }
 
-func darwinPrelaunchHookEligible(evidence darwinBinaryEvidence) bool {
-	return evidence.Version != "" && evidence.Build != "" && evidence.MacOSMajorMinor != "" &&
-		evidence.BinaryFingerprintStatus == darwinFingerprintVerified && validDarwinSHA256(evidence.ExecutableSHA256) &&
-		evidence.BinarySigningStatus == darwinSigningVerified && evidence.SigningTeamID != "" &&
-		validDarwinSHA256(evidence.DesignatedRequirementSHA256)
-}
-
-func applyDarwinRouteEvidence(diag *diagnostics, evidence darwinBinaryEvidence) darwinRouteDecision {
-	decision := evaluateDarwinRoute(evidence, darwinCompatibilityRegistry)
-	diag.WeChatVersion = evidence.Version
-	diag.WeChatBuild = evidence.Build
-	diag.ExecutableSHA256 = evidence.ExecutableSHA256
-	diag.BinaryFingerprintStatus = evidence.BinaryFingerprintStatus
-	diag.BinarySigningStatus = evidence.BinarySigningStatus
-	diag.SigningTeamID = evidence.SigningTeamID
-	diag.DesignatedRequirementSHA256 = evidence.DesignatedRequirementSHA256
-	diag.ProcessArchitecture = evidence.ProcessArchitecture
-	diag.ProcessArchitectureStatus = evidence.ProcessArchitectureStatus
-	diag.ProcessTranslationStatus = evidence.ProcessTranslationStatus
-	diag.MacOSVersion = evidence.MacOSVersion
-	diag.CompatibilityRegistryStatus = decision.CompatibilityRegistryStatus
-	diag.StandardRouteStatus = decision.StandardRouteStatus
-	diag.StandardRouteEvidence = append([]string(nil), decision.Evidence...)
-	return decision
-}
-
 func darwinWeChatExecutable(process darwinProcess) string {
 	if executable := darwinProcessExecutable(process); executable != "" {
 		return executable
@@ -284,29 +258,6 @@ func darwinWaitForProcessName(executable string) string {
 		return "Weixin"
 	}
 	return "WeChat"
-}
-
-func darwinVersionSupport(version string) string {
-	version = strings.TrimSpace(version)
-	if version == "" {
-		return "unknown"
-	}
-	parts := strings.Split(version, ".")
-	major, err := strconv.Atoi(parts[0])
-	if err != nil {
-		return "unknown"
-	}
-	minor := 0
-	if len(parts) > 1 {
-		minor, _ = strconv.Atoi(parts[1])
-	}
-	if major > 4 || (major == 4 && minor >= 1) {
-		return "commoncrypto_dynamic"
-	}
-	if major == 4 {
-		return "static_then_commoncrypto"
-	}
-	return "static_memory"
 }
 
 func darwinPreferDynamicHook(version string) bool {

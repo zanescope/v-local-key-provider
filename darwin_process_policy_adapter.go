@@ -14,6 +14,10 @@ func darwinProcessFromModel(process darwinmodel.Process) darwinProcess {
 	return darwinProcess{pid: process.PID, name: process.Name, command: process.Command}
 }
 
+func darwinProcessToModel(process darwinProcess) darwinmodel.Process {
+	return darwinmodel.Process{PID: process.pid, Name: process.name, Command: process.command}
+}
+
 func parseDarwinProcessList(output string) []darwinProcess {
 	models := darwinmodel.ParseProcessList(output)
 	processes := make([]darwinProcess, 0, len(models))

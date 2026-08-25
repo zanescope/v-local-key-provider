@@ -63,6 +63,14 @@ func validDarwinSHA256(value string) bool {
 	return darwinroute.ValidSHA256(value)
 }
 
+func darwinPrelaunchHookEligible(evidence darwinBinaryEvidence) bool {
+	return darwinroute.PrelaunchHookEligible(evidence)
+}
+
+func darwinVersionSupport(version string) string {
+	return darwinroute.VersionSupport(version)
+}
+
 func darwinStandardRouteEligible(decision darwinRouteDecision) bool {
 	return darwinroute.StandardRouteEligible(decision, !releaseBuild())
 }

@@ -1,10 +1,25 @@
 package darwin
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 )
+
+type OutputRunner func(context.Context, string, []string, int) ([]byte, error)
+
+type ProcessDiscoveryError struct {
+	PS        error
+	Launchctl error
+}
+
+func (err *ProcessDiscoveryError) Error() string {
+	return fmt.Sprintf("读取微信进程列表失败：ps=%v；launchctl=%v", err.PS, err.Launchctl)
+}
 
 type Process struct {
 	PID     int
@@ -117,4 +132,70 @@ func ParseLaunchctlProcessRefs(output string) []ProcessRef {
 		refs = append(refs, ProcessRef{Label: label, PID: pid})
 	}
 	return refs
+}
+
+// DiscoverProcesses owns the bounded ps -> launchctl fallback policy while the
+// composition root supplies the hardened subprocess runner and buffer clearer.
+func DiscoverProcesses(run OutputRunner, clear func([]byte), uid int) ([]Process, string, error) {
+	if run == nil {
+		return nil, "unavailable", errors.New("Darwin process command runner is unavailable")
+	}
+	if clear == nil {
+		clear = func(value []byte) {
+			for index := range value {
+				value[index] = 0
+			}
+		}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	defer cancel()
+	output, err := run(ctx, "/bin/ps", []string{"-axo", "pid=,comm=,args="}, 8*1024*1024)
+	defer clear(output)
+	if err == nil {
+		return ParseProcessList(string(output)), "ps", nil
+	}
+	uidText := strconv.Itoa(uid)
+	launchOutput, launchErr := run(ctx, "/bin/launchctl", []string{"print", "gui/" + uidText}, 8*1024*1024)
+	defer clear(launchOutput)
+	if launchErr == nil {
+		processes := ParseLaunchctlProcessList(string(launchOutput))
+		seen := map[int]bool{}
+		for _, process := range processes {
+			seen[process.PID] = true
+		}
+		refs := ParseLaunchctlProcessRefs(string(launchOutput))
+		var detailErr error
+		for _, ref := range refs {
+			if seen[ref.PID] {
+				continue
+			}
+			detail, commandErr := run(
+				ctx, "/bin/launchctl", []string{"print", "gui/" + uidText + "/" + ref.Label}, 1024*1024,
+			)
+			if commandErr != nil {
+				clear(detail)
+				if detailErr == nil {
+					detailErr = commandErr
+				}
+				continue
+			}
+			parsed := ParseLaunchctlProcessList(string(detail))
+			clear(detail)
+			for _, process := range parsed {
+				if process.PID != ref.PID || seen[process.PID] {
+					continue
+				}
+				seen[process.PID] = true
+				processes = append(processes, process)
+			}
+		}
+		if len(processes) == 0 && len(refs) > 0 {
+			if detailErr == nil {
+				detailErr = errors.New("微信应用服务详情不可读")
+			}
+			return nil, "launchctl", &ProcessDiscoveryError{PS: err, Launchctl: detailErr}
+		}
+		return processes, "launchctl", nil
+	}
+	return nil, "ps_then_launchctl", &ProcessDiscoveryError{PS: err, Launchctl: launchErr}
 }
