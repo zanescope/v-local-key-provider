@@ -187,6 +187,19 @@ func TestRunAcquireReturnsDeadlineDiagnosticsAfterDiscoveryBudget(t *testing.T) 
 	if runtime.GOOS != "darwin" && runtime.GOOS != "windows" {
 		t.Skip("platform acquisition is unsupported")
 	}
+	previous := platformDriver
+	t.Cleanup(func() { platformDriver = previous })
+	platformDriver = acquisitionmodel.PlatformDriverFunc(func(
+		_ acquisitionmodel.Targets,
+		_ acquisitionmodel.MediaEvidence,
+		_ acquisitionmodel.PlatformRequest,
+	) (response, diagnostics, error) {
+		diag := newDiagnostics(runtime.GOOS, []string{"database"})
+		// This test owns only discovery-budget behavior. Do not let the CI
+		// host's real SIP posture replace the expected deadline outcome.
+		diag.SecurityPostureStatus = "not_applicable"
+		return response{}, diag, nil
+	})
 	root := t.TempDir()
 	account := filepath.Join(root, "account")
 	db := filepath.Join(root, "db")

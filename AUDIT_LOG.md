@@ -4,6 +4,14 @@
 
 审计条目按时间倒序记录。每条结论只对其标明的代码基线成立；后续复核可以取代旧结论，但不得静默改写历史。
 
+## 2026-08-27 PR #3 跨平台集成门禁修复
+
+迁移基线 `8124ca3` 推送后，首轮远端 Audit gates 暴露了两个本地环境未覆盖的跨平台问题；竞态与依赖漏洞门禁同时通过。修复不改变 Provider 能力声明或发布证据状态。
+
+- macOS runner 的 SIP 实际为 disabled，root 的 discovery-budget 测试因此被更高优先级的 SIP 恢复规则接管。测试现在通过既有 `PlatformDriver` seam 注入中性平台诊断，只验证其声明拥有的发现超时行为；生产 outcome 顺序和 SIP fail-closed 恢复纪律保持不变。
+- Windows runner 的系统临时目录使用 8.3 短路径，`realpath` 返回长路径后被 npm installer 的文本比较误判为 junction。安装目录验证现在逐级 `lstat` 实际祖先和每个新建层级，仍拒绝 symlink/junction，同时不把同一目录的短名/长名别名伪装成 reparse evidence。
+- 修复后 Windows 定向 discovery-budget 测试、WSL `go test -count=1 ./...` 和 Provider npm 13/13 均通过；最终远端状态以 PR #3 的新提交 checks 为准。
+
 ## 2026-08-26 D-1 workflow/package migration completion
 
 本轮从 `f780f76` 之后多次中断的工作树继续。每次先核对未提交 diff、编译引用和 owner tests，再按独立 commit 收尾；没有发现留在生产路径中的半写函数。工作集中在通用 workflow 的最后四个 root owner，并未改写任何 Phase 3/4 真机能力或 Phase 5 发布声明。

@@ -62,27 +62,31 @@ function installedBinaryPath(selected = target(), base = installationBase()) {
   return path.join(installationDirectory(selected, base), selected.binary);
 }
 
-function sameResolvedPath(left, right, platform = process.platform) {
-  const first = path.resolve(left);
-  const second = path.resolve(right);
-  return platform === 'win32' ? first.toLowerCase() === second.toLowerCase() : first === second;
-}
-
 function assertDirectDirectory(directory, platform = process.platform, filesystem = fs) {
   const absolute = path.resolve(directory);
   const info = filesystem.lstatSync(absolute);
   if (!info.isDirectory() || info.isSymbolicLink()) {
     throw new Error(`安装目录不能是符号链接或目录联接：${absolute}`);
   }
-  const realpath = filesystem.realpathSync.native || filesystem.realpathSync;
-  const resolved = realpath(absolute);
-  if (!sameResolvedPath(absolute, resolved, platform)) {
-    throw new Error(`安装目录祖先包含符号链接或目录联接：${absolute}`);
-  }
   if (platform !== 'win32' && typeof process.geteuid === 'function') {
     const uid = process.geteuid();
     if ((info.uid !== uid && info.uid !== 0) || (info.mode & 0o022) !== 0) {
       throw new Error(`安装目录所有者或写权限不可信：${absolute}`);
+    }
+  }
+  return absolute;
+}
+
+function assertNoLinkAncestors(directory, filesystem = fs) {
+  const absolute = path.resolve(directory);
+  const root = path.parse(absolute).root;
+  let current = root;
+  for (const segment of path.relative(root, absolute).split(path.sep)) {
+    if (!segment) continue;
+    current = path.join(current, segment);
+    const info = filesystem.lstatSync(current);
+    if (!info.isDirectory() || info.isSymbolicLink()) {
+      throw new Error(`安装目录祖先包含符号链接或目录联接：${current}`);
     }
   }
   return absolute;
@@ -95,6 +99,7 @@ function prepareInstallationDirectory(destination, base, platform = process.plat
   if (relative === '' || path.isAbsolute(relative) || relative === '..' || relative.startsWith(`..${path.sep}`)) {
     throw new Error('安装目录必须是固定安装基目录的非空后代');
   }
+  assertNoLinkAncestors(absoluteBase, filesystem);
   assertDirectDirectory(absoluteBase, platform, filesystem);
   let current = absoluteBase;
   for (const segment of relative.split(path.sep)) {
@@ -423,7 +428,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  allowUnverifiedLocalBinary, assertDirectDirectory, assertDownloadUrl, download, install, installationBase,
+  allowUnverifiedLocalBinary, assertDirectDirectory, assertDownloadUrl, assertNoLinkAncestors, download, install, installationBase,
   installationDirectory, installedBinaryPath, parseChecksums, releaseTag, releaseUrl, replaceFile,
-  prepareInstallationDirectory, replaceFiles, reserveSibling, sameResolvedPath, target, verifyHash,
+  prepareInstallationDirectory, replaceFiles, reserveSibling, target, verifyHash,
 };
