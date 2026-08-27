@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	darwinroute "github.com/zanescope/v-local-key-provider/internal/platform/darwin"
 	"io"
 	"os"
 	"os/exec"
@@ -367,17 +368,17 @@ func TestPhase3MacOSLiveAcquisition(t *testing.T) {
 	defer clearLiveResponse(&result)
 	assertLiveAcquisition(t, result)
 	diag := result.Diagnostics
-	if diag.ProcessArchitectureStatus != darwinArchitectureVerified ||
+	if diag.ProcessArchitectureStatus != darwinroute.ArchitectureVerified ||
 		diag.ProcessArchitecture != liveRequiredEnvironment(t, "V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_ARCH") {
 		t.Fatal("Darwin live route lacks a verified target-process architecture")
 	}
-	if diag.BinaryFingerprintStatus != darwinFingerprintVerified || !validDarwinSHA256(diag.ExecutableSHA256) ||
-		diag.BinarySigningStatus != darwinSigningVerified || diag.SigningTeamID == "" ||
+	if diag.BinaryFingerprintStatus != darwinroute.FingerprintVerified || !validDarwinSHA256(diag.ExecutableSHA256) ||
+		diag.BinarySigningStatus != darwinroute.SigningVerified || diag.SigningTeamID == "" ||
 		!validDarwinSHA256(diag.DesignatedRequirementSHA256) {
 		t.Fatal("Darwin live route lacks a verified binary and signing identity")
 	}
-	if diag.CompatibilityRegistryStatus != darwinRegistryRegisteredSupported ||
-		diag.StandardRouteStatus != darwinStandardEligibleRegistry ||
+	if diag.CompatibilityRegistryStatus != darwinroute.RegistryRegisteredSupported ||
+		diag.StandardRouteStatus != darwinroute.StandardEligibleRegistry ||
 		!containsString(diag.StandardRouteEvidence, "registry_exact_match") ||
 		!containsString(diag.StandardRouteEvidence, "registry_candidate_entry") {
 		t.Fatal("Darwin live route is not bound to the exact candidate registry entry")

@@ -1,6 +1,10 @@
 package provider
 
-import releaseevidence "github.com/zanescope/v-local-key-provider/internal/releaseevidence"
+import (
+	darwinroute "github.com/zanescope/v-local-key-provider/internal/platform/darwin"
+	windowsroute "github.com/zanescope/v-local-key-provider/internal/platform/windows"
+	releaseevidence "github.com/zanescope/v-local-key-provider/internal/releaseevidence"
+)
 
 const releaseCandidateAttestationWorkflow = releaseevidence.CandidateAttestationWorkflow
 
@@ -16,10 +20,6 @@ func validReleaseRunID(value string) bool {
 	return releaseevidence.ValidRunID(value)
 }
 
-func validHex(value string) bool {
-	return releaseevidence.ValidHex(value)
-}
-
 func releaseCandidateProviderAsset(platform, architecture string) string {
 	return releaseevidence.CandidateProviderAsset(platform, architecture)
 }
@@ -28,28 +28,8 @@ func releaseCandidateHelperAsset(platform, architecture string) string {
 	return releaseevidence.CandidateHelperAsset(platform, architecture)
 }
 
-func releaseEvidenceFile(root, digest string) (releaseEvidenceArtifact, error) {
-	return releaseevidence.ReadEvidenceFile(root, digest, version)
-}
-
 func sameReleaseProfiles(actual, expected []string) bool {
 	return releaseevidence.SameProfiles(actual, expected)
-}
-
-func releaseDarwinRouteMatches(architecture, route string) bool {
-	return route == darwinDynamicRouteID(architecture, "") || route == "darwin_standard_dynamic_waitfor"
-}
-
-func releasePromotionFile(root, path string) (releasePromotionManifest, string, error) {
-	return releaseevidence.ReadPromotionFile(root, path, version)
-}
-
-func releasePromotionTargetFor(promotion releasePromotionManifest, platform, architecture string) (releasePromotionTarget, error) {
-	return releaseevidence.PromotionTargetFor(promotion, platform, architecture)
-}
-
-func releaseEvidenceMatchesPromotion(evidence releaseEvidenceArtifact, promotion releasePromotionManifest, target releasePromotionTarget) bool {
-	return releaseevidence.EvidenceMatchesPromotion(evidence, promotion, target)
 }
 
 func releaseEvidenceRegistryEntries(platform, architecture string) []releaseevidence.RegistryEntry {
@@ -69,7 +49,7 @@ func releaseEvidenceRegistryEntries(platform, architecture string) []releaseevid
 				BinarySignerSHA256:              entry.BinarySignerSHA256,
 				BinaryProductIdentity:           entry.ProductIdentity,
 				AllowedTargetBindingStatuses:    []string{"hmac_verified", "path_verified"},
-				RequiredConfigCipherRouteStatus: windowsConfigCipherSucceeded,
+				RequiredConfigCipherRouteStatus: windowsroute.ConfigCipherSucceeded,
 				AllowedRoutes:                   []string{"windows_config_cipher"},
 				RequiredRouteEvidence:           "registry_candidate_entry",
 				ValidatedCipherProfiles:         append([]string(nil), entry.ValidatedProfiles...),
@@ -89,7 +69,7 @@ func releaseEvidenceRegistryEntries(platform, architecture string) []releaseevid
 				SigningTeamID:                entry.SigningTeamID,
 				DesignatedRequirementSHA256:  entry.DesignatedRequirementSHA256,
 				AllowedTargetBindingStatuses: []string{"hmac_verified", "path_verified"},
-				RequiredStandardRouteStatus:  darwinStandardEligibleRegistry,
+				RequiredStandardRouteStatus:  darwinroute.StandardEligibleRegistry,
 				AllowedRoutes:                []string{darwinDynamicRouteID(entry.ProcessArchitecture, ""), "darwin_standard_dynamic_waitfor"},
 				RequiredRouteEvidence:        "registry_candidate_entry",
 				ValidatedCipherProfiles:      append([]string(nil), entry.ValidatedCipherProfiles...),

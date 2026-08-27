@@ -2,37 +2,6 @@ package provider
 
 import windowsroute "github.com/zanescope/v-local-key-provider/internal/platform/windows"
 
-const (
-	windowsArchitectureNotEvaluated = windowsroute.ArchitectureNotEvaluated
-	windowsArchitectureVerified     = windowsroute.ArchitectureVerified
-	windowsArchitectureUnavailable  = windowsroute.ArchitectureUnavailable
-
-	windowsFingerprintNotEvaluated = windowsroute.FingerprintNotEvaluated
-	windowsFingerprintVerified     = windowsroute.FingerprintVerified
-	windowsFingerprintUnavailable  = windowsroute.FingerprintUnavailable
-
-	windowsSigningNotEvaluated = windowsroute.SigningNotEvaluated
-	windowsSigningVerified     = windowsroute.SigningVerified
-	windowsSigningInvalid      = windowsroute.SigningInvalid
-	windowsSigningUnavailable  = windowsroute.SigningUnavailable
-
-	windowsRegistryNotEvaluated        = windowsroute.RegistryNotEvaluated
-	windowsRegistryRegisteredSupported = windowsroute.RegistryRegisteredSupported
-	windowsRegistryRegisteredRejected  = windowsroute.RegistryRegisteredRejected
-	windowsRegistryUnregistered        = windowsroute.RegistryUnregistered
-	windowsRegistryUntrustedBinary     = windowsroute.RegistryUntrustedBinary
-
-	windowsConfigCipherNotEvaluated         = windowsroute.ConfigCipherNotEvaluated
-	windowsConfigCipherUnavailableUnknown   = windowsroute.ConfigCipherUnavailableUnknown
-	windowsConfigCipherUnavailableUntrusted = windowsroute.ConfigCipherUnavailableUntrusted
-	windowsConfigCipherEligible             = windowsroute.ConfigCipherEligible
-	windowsConfigCipherNoStructure          = windowsroute.ConfigCipherNoStructure
-	windowsConfigCipherInvalidStructure     = windowsroute.ConfigCipherInvalidStructure
-	windowsConfigCipherNoVerifiedCandidate  = windowsroute.ConfigCipherNoVerifiedCandidate
-	windowsConfigCipherPartial              = windowsroute.ConfigCipherPartial
-	windowsConfigCipherSucceeded            = windowsroute.ConfigCipherSucceeded
-)
-
 type windowsBinaryEvidence = windowsroute.BinaryEvidence
 type windowsConfigCipherRecipe = windowsroute.ConfigCipherRecipe
 type windowsCompatibilityEntry = windowsroute.CompatibilityEntry
@@ -56,20 +25,8 @@ func validWindowsSHA256(value string) bool {
 	return windowsroute.ValidSHA256(value)
 }
 
-func windowsRegistryEntryMatches(entry windowsCompatibilityEntry, evidence windowsBinaryEvidence) bool {
-	return windowsroute.RegistryEntryMatches(entry, evidence)
-}
-
 func windowsRegistryEntryEligible(entry windowsCompatibilityEntry) bool {
 	return windowsroute.RegistryEntryEligible(entry, windowsRoutePolicy().ProfileRegistered)
-}
-
-func windowsRegistryEntryRuntimeEligible(entry windowsCompatibilityEntry) bool {
-	return windowsroute.RegistryEntryRuntimeEligible(entry, windowsRoutePolicy())
-}
-
-func windowsTrustedFallbackSigner(signer, architecture string, registry []windowsCompatibilityEntry) bool {
-	return windowsroute.TrustedFallbackSigner(signer, architecture, registry, windowsRoutePolicy())
 }
 
 func windowsFallbackIdentityEligible(evidence windowsBinaryEvidence, registry []windowsCompatibilityEntry) bool {

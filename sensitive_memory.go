@@ -98,13 +98,6 @@ func appendSensitiveBytesLimited(current, incoming []byte, limit int) ([]byte, b
 	return current, over
 }
 
-func sensitiveBytesView(value []byte) string {
-	if len(value) == 0 {
-		return ""
-	}
-	return unsafe.String(unsafe.SliceData(value), len(value))
-}
-
 type sensitiveOutputBuffer struct {
 	data  []byte
 	limit int

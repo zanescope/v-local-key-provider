@@ -2,32 +2,6 @@ package provider
 
 import darwinroute "github.com/zanescope/v-local-key-provider/internal/platform/darwin"
 
-const (
-	darwinArchitectureNotEvaluated = darwinroute.ArchitectureNotEvaluated
-	darwinArchitectureVerified     = darwinroute.ArchitectureVerified
-	darwinArchitectureUnavailable  = darwinroute.ArchitectureUnavailable
-
-	darwinFingerprintNotEvaluated = darwinroute.FingerprintNotEvaluated
-	darwinFingerprintVerified     = darwinroute.FingerprintVerified
-	darwinFingerprintUnavailable  = darwinroute.FingerprintUnavailable
-
-	darwinSigningNotEvaluated = darwinroute.SigningNotEvaluated
-	darwinSigningVerified     = darwinroute.SigningVerified
-	darwinSigningInvalid      = darwinroute.SigningInvalid
-	darwinSigningUnavailable  = darwinroute.SigningUnavailable
-
-	darwinRegistryNotEvaluated        = darwinroute.RegistryNotEvaluated
-	darwinRegistryRegisteredSupported = darwinroute.RegistryRegisteredSupported
-	darwinRegistryRegisteredRejected  = darwinroute.RegistryRegisteredRejected
-	darwinRegistryUnregistered        = darwinroute.RegistryUnregistered
-	darwinRegistryUntrustedBinary     = darwinroute.RegistryUntrustedBinary
-
-	darwinStandardNotEvaluated     = darwinroute.StandardNotEvaluated
-	darwinStandardEligibleRegistry = darwinroute.StandardEligibleRegistry
-	darwinStandardEligibleGeneric  = darwinroute.StandardEligibleGeneric
-	darwinStandardUnsupported      = darwinroute.StandardUnsupported
-)
-
 type darwinBinaryEvidence = darwinroute.BinaryEvidence
 type darwinCompatibilityEntry = darwinroute.CompatibilityEntry
 type darwinRouteDecision = darwinroute.RouteDecision
@@ -55,20 +29,8 @@ func darwinTranslationStatus(processArchitecture, machineArchitecture string) st
 	return darwinroute.TranslationStatus(processArchitecture, machineArchitecture)
 }
 
-func darwinMajorMinor(version string) string {
-	return darwinroute.MajorMinor(version)
-}
-
 func validDarwinSHA256(value string) bool {
 	return darwinroute.ValidSHA256(value)
-}
-
-func darwinPrelaunchHookEligible(evidence darwinBinaryEvidence) bool {
-	return darwinroute.PrelaunchHookEligible(evidence)
-}
-
-func darwinVersionSupport(version string) string {
-	return darwinroute.VersionSupport(version)
 }
 
 func darwinStandardRouteEligible(decision darwinRouteDecision) bool {
@@ -77,10 +39,6 @@ func darwinStandardRouteEligible(decision darwinRouteDecision) bool {
 
 func darwinRegistryEntryEligible(entry darwinCompatibilityEntry) bool {
 	return darwinroute.RegistryEntryEligible(entry, darwinRoutePolicy().ProfileRegistered)
-}
-
-func darwinRegistryEntryRuntimeEligible(entry darwinCompatibilityEntry) bool {
-	return darwinroute.RegistryEntryRuntimeEligible(entry, darwinRoutePolicy())
 }
 
 func darwinProcessAccessFailure(securityPosture string) string {
@@ -93,10 +51,6 @@ func darwinDeniedAccessError(helperMode bool, helperStatus, securityPosture stri
 
 func darwinDynamicRouteID(architecture, securityPosture string) string {
 	return darwinroute.DynamicRouteID(architecture, securityPosture)
-}
-
-func darwinRegistryEntryMatches(entry darwinCompatibilityEntry, evidence darwinBinaryEvidence) bool {
-	return darwinroute.RegistryEntryMatches(entry, evidence)
 }
 
 func evaluateDarwinRoute(evidence darwinBinaryEvidence, registry []darwinCompatibilityEntry) darwinRouteDecision {

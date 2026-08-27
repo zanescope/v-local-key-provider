@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	windowsmodel "github.com/zanescope/v-local-key-provider/internal/platform/windows"
+	windowsroute "github.com/zanescope/v-local-key-provider/internal/platform/windows"
 )
 
 func liveExpectedBoolean(t *testing.T, name string) bool {
@@ -57,15 +58,15 @@ func TestPhase4WindowsLiveAcquisition(t *testing.T) {
 	if diag.RouteSelected != expectedRoute {
 		t.Fatalf("Windows route=%q, want %q", diag.RouteSelected, expectedRoute)
 	}
-	if diag.ProcessArchitectureStatus != windowsArchitectureVerified ||
+	if diag.ProcessArchitectureStatus != windowsroute.ArchitectureVerified ||
 		diag.ProcessArchitecture != liveRequiredEnvironment(t, "V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_ARCH") {
 		t.Fatalf("Windows target process architecture=%s/%s is not the expected verified ABI",
 			diag.ProcessArchitecture, diag.ProcessArchitectureStatus)
 	}
-	if diag.BinaryFingerprintStatus != windowsFingerprintVerified || !validWindowsSHA256(diag.ExecutableSHA256) {
+	if diag.BinaryFingerprintStatus != windowsroute.FingerprintVerified || !validWindowsSHA256(diag.ExecutableSHA256) {
 		t.Fatal("Windows live route lacks a verified target executable fingerprint")
 	}
-	if diag.BinarySigningStatus != windowsSigningVerified || !validWindowsSHA256(diag.BinarySignerSHA256) {
+	if diag.BinarySigningStatus != windowsroute.SigningVerified || !validWindowsSHA256(diag.BinarySignerSHA256) {
 		t.Fatal("Windows live route lacks a verified Authenticode signer fingerprint")
 	}
 	if diag.BinaryProductIdentity != "weixin.exe" && diag.BinaryProductIdentity != "wechat.exe" {
@@ -104,10 +105,10 @@ func TestPhase4WindowsLiveAcquisition(t *testing.T) {
 
 	switch expectedRoute {
 	case "windows_config_cipher":
-		if expectedRegistry != windowsRegistryRegisteredSupported ||
-			(expectedConfig != windowsConfigCipherPartial && expectedConfig != windowsConfigCipherSucceeded &&
-				expectedConfig != windowsConfigCipherNoStructure && expectedConfig != windowsConfigCipherInvalidStructure &&
-				expectedConfig != windowsConfigCipherNoVerifiedCandidate) {
+		if expectedRegistry != windowsroute.RegistryRegisteredSupported ||
+			(expectedConfig != windowsroute.ConfigCipherPartial && expectedConfig != windowsroute.ConfigCipherSucceeded &&
+				expectedConfig != windowsroute.ConfigCipherNoStructure && expectedConfig != windowsroute.ConfigCipherInvalidStructure &&
+				expectedConfig != windowsroute.ConfigCipherNoVerifiedCandidate) {
 			t.Fatal("Config.Cipher live route lacks exact registered route state")
 		}
 		if !containsLiveEvidence(diag.WindowsRouteEvidence, "registry_exact_match") ||

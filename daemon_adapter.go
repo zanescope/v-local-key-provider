@@ -10,7 +10,6 @@ const acquisitionDaemonSchemaVersion = daemonmodel.SchemaVersion
 
 type acquisitionDaemonEndpoint = daemonmodel.Endpoint
 type acquisitionDaemonRequest = daemonmodel.Request
-type acquisitionDaemonError = daemonmodel.Error
 type acquisitionDaemonResponse = daemonmodel.Response
 
 func acquisitionDaemonService() (*daemonmodel.Service, error) {

@@ -40,16 +40,8 @@ func pbkdf2SHA512(password, salt []byte, iterations int, cancelled *atomic.Bool,
 	return result
 }
 
-func deriveProfileKey(profile cipherProfile, passphrase, salt []byte, cancelled *atomic.Bool, remaining ...budget) []byte {
-	return providercrypto.DeriveProfileKey(profile, passphrase, salt, profileCryptoRuntime(cancelled, remaining))
-}
-
 func profileHMACKey(profile cipherProfile, rawKey, fileSalt []byte, cancelled *atomic.Bool, remaining ...budget) []byte {
 	return providercrypto.ProfileHMACKey(profile, rawKey, fileSalt, profileCryptoRuntime(cancelled, remaining))
-}
-
-func verifyRawKeyWithProfile(profile cipherProfile, rawKey, page []byte, cancelled *atomic.Bool, remaining ...budget) bool {
-	return providercrypto.VerifyRawKeyWithProfile(profile, rawKey, page, profileCryptoRuntime(cancelled, remaining))
 }
 
 func verifyRawDatabaseKey(rawKey, page []byte, cancelled *atomic.Bool, remaining ...budget) (keyVerification, bool) {

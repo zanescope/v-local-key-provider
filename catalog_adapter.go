@@ -27,10 +27,6 @@ func catalogHMAC(key []byte, values ...string) string {
 	return catalogmodel.HMAC(key, values...)
 }
 
-func safeRelativePath(root, path string) (string, error) {
-	return catalogmodel.SafeRelativePath(root, path)
-}
-
 func canonicalFileID(file *os.File) (string, error) {
 	return catalogmodel.CanonicalFileID(file, platformFileIdentity)
 }

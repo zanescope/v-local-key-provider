@@ -12,14 +12,6 @@ func windowsConfigSensitiveRuntime() windowsroute.SensitiveRuntime {
 	}
 }
 
-func addWindowsConfigOffset(address uint64, offset int64) (uint64, bool) {
-	return windowsroute.AddConfigOffset(address, offset)
-}
-
-func decodeWindowsConfigCipherCandidate(encoded []byte, recipe windowsConfigCipherRecipe) ([]byte, error) {
-	return windowsroute.DecodeConfigCipherCandidate(encoded, recipe, windowsConfigSensitiveRuntime())
-}
-
 func extractWindowsConfigCipherCandidate(reader windowsConfigMemoryReader, needleAddress uint64, pointerSize int, recipe windowsConfigCipherRecipe) ([]byte, error) {
 	return windowsroute.ExtractConfigCipherCandidate(reader, needleAddress, pointerSize, recipe, windowsConfigSensitiveRuntime())
 }

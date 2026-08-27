@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	darwinroute "github.com/zanescope/v-local-key-provider/internal/platform/darwin"
+	windowsroute "github.com/zanescope/v-local-key-provider/internal/platform/windows"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -306,7 +308,7 @@ func TestPhase5ReleaseEvidenceArtifactIsContentAddressedAndExternallyPromoted(t 
 		TargetExecutableSHA256: entry.ExecutableSHA256, BinaryFingerprintStatus: "verified", BinarySigningStatus: "verified",
 		BinarySignerSHA256: entry.BinarySignerSHA256, BinaryProductIdentity: entry.ProductIdentity,
 		ProcessArchitecture: entry.ProcessArchitecture, ProcessArchitectureStatus: "verified_running_process",
-		CompatibilityRegistryStatus: "registered_supported", ConfigCipherRouteStatus: windowsConfigCipherSucceeded,
+		CompatibilityRegistryStatus: "registered_supported", ConfigCipherRouteStatus: windowsroute.ConfigCipherSucceeded,
 		WindowsRouteEvidence: []string{"registry_candidate_entry", "registry_exact_match"},
 		RouteSelected:        "windows_config_cipher", TargetBindingStatus: "path_verified",
 		ResultCode: "complete", DatabaseCoverageStatus: "complete", ValidatedCipherProfiles: []string{defaultProfileID},
@@ -341,7 +343,7 @@ func TestPhase5ReleaseEvidenceArtifactIsContentAddressedAndExternallyPromoted(t 
 		{name: "workflow run", mutate: func(value *releaseEvidenceArtifact) { value.CandidateWorkflowRunID = "54321" }},
 		{name: "attestation", mutate: func(value *releaseEvidenceArtifact) { value.CandidateAttestationVerified = false }},
 		{name: "route", mutate: func(value *releaseEvidenceArtifact) { value.RouteSelected = "windows_memory_fallback" }},
-		{name: "config status", mutate: func(value *releaseEvidenceArtifact) { value.ConfigCipherRouteStatus = windowsConfigCipherPartial }},
+		{name: "config status", mutate: func(value *releaseEvidenceArtifact) { value.ConfigCipherRouteStatus = windowsroute.ConfigCipherPartial }},
 		{name: "extra profile", mutate: func(value *releaseEvidenceArtifact) {
 			value.ValidatedCipherProfiles = append(value.ValidatedCipherProfiles, "unexpected-profile")
 		}},
@@ -390,7 +392,7 @@ func TestPhase5DarwinPromotionBindsProviderHelperAndRoute(t *testing.T) {
 		BinaryFingerprintStatus: "verified", BinarySigningStatus: "verified", SigningTeamID: entry.SigningTeamID,
 		DesignatedRequirementSHA256: entry.DesignatedRequirementSHA256, ProcessArchitecture: entry.ProcessArchitecture,
 		ProcessArchitectureStatus: "verified_running_process", CompatibilityRegistryStatus: "registered_supported",
-		StandardRouteStatus:   darwinStandardEligibleRegistry,
+		StandardRouteStatus:   darwinroute.StandardEligibleRegistry,
 		StandardRouteEvidence: []string{"registry_candidate_entry", "registry_exact_match"},
 		RouteSelected:         darwinDynamicRouteID("arm64", ""), TargetBindingStatus: "path_verified",
 		ResultCode: "complete", DatabaseCoverageStatus: "complete", ValidatedCipherProfiles: []string{defaultProfileID},

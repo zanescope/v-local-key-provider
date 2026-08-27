@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	windowsroute "github.com/zanescope/v-local-key-provider/internal/platform/windows"
 	"os"
 	"strings"
 	"testing"
@@ -14,9 +15,9 @@ import (
 func completeWindowsRouteEvidence() windowsBinaryEvidence {
 	return windowsBinaryEvidence{
 		Version: "4.1.11.17", Build: "11.17", ExecutableSHA256: strings.Repeat("a", 64),
-		BinaryFingerprintStatus: windowsFingerprintVerified, BinarySigningStatus: windowsSigningVerified,
+		BinaryFingerprintStatus: windowsroute.FingerprintVerified, BinarySigningStatus: windowsroute.SigningVerified,
 		BinarySignerSHA256: strings.Repeat("b", 64), ProcessArchitecture: "amd64",
-		ProcessArchitectureStatus: windowsArchitectureVerified, ProductIdentity: "weixin.exe",
+		ProcessArchitectureStatus: windowsroute.ArchitectureVerified, ProductIdentity: "weixin.exe",
 	}
 }
 
@@ -37,14 +38,14 @@ func TestPhase4WindowsRegistryRequiresExactMachineEvidence(t *testing.T) {
 	evidence := completeWindowsRouteEvidence()
 	entry := fixtureWindowsRegistryEntry(evidence)
 	decision := evaluateWindowsRoute(evidence, []windowsCompatibilityEntry{entry})
-	if decision.CompatibilityRegistryStatus != windowsRegistryRegisteredSupported ||
-		decision.ConfigCipherRouteStatus != windowsConfigCipherEligible || decision.EntryIndex != 0 {
+	if decision.CompatibilityRegistryStatus != windowsroute.RegistryRegisteredSupported ||
+		decision.ConfigCipherRouteStatus != windowsroute.ConfigCipherEligible || decision.EntryIndex != 0 {
 		t.Fatalf("exact Windows registry evidence was not accepted: %#v", decision)
 	}
 	evidence.ExecutableSHA256 = strings.Repeat("c", 64)
 	decision = evaluateWindowsRoute(evidence, []windowsCompatibilityEntry{entry})
-	if decision.CompatibilityRegistryStatus != windowsRegistryUnregistered ||
-		decision.ConfigCipherRouteStatus != windowsConfigCipherUnavailableUnknown {
+	if decision.CompatibilityRegistryStatus != windowsroute.RegistryUnregistered ||
+		decision.ConfigCipherRouteStatus != windowsroute.ConfigCipherUnavailableUnknown {
 		t.Fatalf("different Windows fingerprint inherited fixed-layout support: %#v", decision)
 	}
 }
@@ -60,12 +61,12 @@ func TestPhase5WindowsReleaseRegistryRequiresPromotionDigest(t *testing.T) {
 	evidence := completeWindowsRouteEvidence()
 	entry := fixtureWindowsRegistryEntry(evidence)
 	decision := evaluateWindowsRoute(evidence, []windowsCompatibilityEntry{entry})
-	if decision.CompatibilityRegistryStatus != windowsRegistryRegisteredRejected {
+	if decision.CompatibilityRegistryStatus != windowsroute.RegistryRegisteredRejected {
 		t.Fatalf("release accepted an unpromoted Windows candidate: %#v", decision)
 	}
 	releasePromotionSHA256 = strings.Repeat("d", 64)
 	decision = evaluateWindowsRoute(evidence, []windowsCompatibilityEntry{entry})
-	if decision.CompatibilityRegistryStatus != windowsRegistryRegisteredSupported ||
+	if decision.CompatibilityRegistryStatus != windowsroute.RegistryRegisteredSupported ||
 		!containsString(decision.Evidence, "release_promotion_verified") ||
 		!containsString(decision.Evidence, "real_device_evidence_present") {
 		t.Fatalf("promoted Windows release candidate was rejected: %#v", decision)
@@ -74,27 +75,27 @@ func TestPhase5WindowsReleaseRegistryRequiresPromotionDigest(t *testing.T) {
 
 func TestPhase4WindowsRegistryRejectsUntrustedOrIncompleteEntries(t *testing.T) {
 	evidence := completeWindowsRouteEvidence()
-	evidence.BinarySigningStatus = windowsSigningInvalid
+	evidence.BinarySigningStatus = windowsroute.SigningInvalid
 	decision := evaluateWindowsRoute(evidence, nil)
-	if decision.CompatibilityRegistryStatus != windowsRegistryUntrustedBinary ||
-		decision.ConfigCipherRouteStatus != windowsConfigCipherUnavailableUntrusted {
+	if decision.CompatibilityRegistryStatus != windowsroute.RegistryUntrustedBinary ||
+		decision.ConfigCipherRouteStatus != windowsroute.ConfigCipherUnavailableUntrusted {
 		t.Fatalf("untrusted Windows binary was not rejected: %#v", decision)
 	}
 	evidence = completeWindowsRouteEvidence()
 	entry := fixtureWindowsRegistryEntry(evidence)
 	entry.ValidatedProfiles = nil
 	decision = evaluateWindowsRoute(evidence, []windowsCompatibilityEntry{entry})
-	if decision.CompatibilityRegistryStatus != windowsRegistryRegisteredRejected || decision.EntryIndex != 0 {
+	if decision.CompatibilityRegistryStatus != windowsroute.RegistryRegisteredRejected || decision.EntryIndex != 0 {
 		t.Fatalf("profile-free Windows registry entry was accepted: %#v", decision)
 	}
 	entry = fixtureWindowsRegistryEntry(evidence)
 	entry.RouteSupportState = "candidate"
-	if decision = evaluateWindowsRoute(evidence, []windowsCompatibilityEntry{entry}); decision.CompatibilityRegistryStatus != windowsRegistryRegisteredRejected {
+	if decision = evaluateWindowsRoute(evidence, []windowsCompatibilityEntry{entry}); decision.CompatibilityRegistryStatus != windowsroute.RegistryRegisteredRejected {
 		t.Fatalf("non-supported Windows route state was accepted: %#v", decision)
 	}
 	entry = fixtureWindowsRegistryEntry(evidence)
 	entry.ValidatedProfiles = []string{"unknown-profile"}
-	if decision = evaluateWindowsRoute(evidence, []windowsCompatibilityEntry{entry}); decision.CompatibilityRegistryStatus != windowsRegistryRegisteredRejected {
+	if decision = evaluateWindowsRoute(evidence, []windowsCompatibilityEntry{entry}); decision.CompatibilityRegistryStatus != windowsroute.RegistryRegisteredRejected {
 		t.Fatalf("unregistered Windows cipher profile was accepted: %#v", decision)
 	}
 }
@@ -175,13 +176,13 @@ func TestPhase4ProductionRegistryContainsOnlyCompleteCandidates(t *testing.T) {
 	for index, entry := range windowsCompatibilityRegistry {
 		evidence := windowsBinaryEvidence{
 			Version: entry.Version, Build: entry.Build, ExecutableSHA256: entry.ExecutableSHA256,
-			BinaryFingerprintStatus: windowsFingerprintVerified, BinarySigningStatus: windowsSigningVerified,
+			BinaryFingerprintStatus: windowsroute.FingerprintVerified, BinarySigningStatus: windowsroute.SigningVerified,
 			BinarySignerSHA256: entry.BinarySignerSHA256, ProcessArchitecture: entry.ProcessArchitecture,
-			ProcessArchitectureStatus: windowsArchitectureVerified, ProductIdentity: entry.ProductIdentity,
+			ProcessArchitectureStatus: windowsroute.ArchitectureVerified, ProductIdentity: entry.ProductIdentity,
 		}
 		decision := evaluateWindowsRoute(evidence, windowsCompatibilityRegistry)
-		if decision.CompatibilityRegistryStatus != windowsRegistryRegisteredSupported ||
-			decision.ConfigCipherRouteStatus != windowsConfigCipherEligible ||
+		if decision.CompatibilityRegistryStatus != windowsroute.RegistryRegisteredSupported ||
+			decision.ConfigCipherRouteStatus != windowsroute.ConfigCipherEligible ||
 			decision.EntryIndex != index || !entry.Recipe.Valid() {
 			t.Fatalf("production Windows registry entry %d is not a complete candidate", index)
 		}
@@ -245,11 +246,11 @@ func TestPhase4WindowsDiagnosticDefaultsAreStableAndEvidenceFree(t *testing.T) {
 	diag := diagnostics{Platform: "windows"}
 	applyPlatformDiagnosticDefaults(&diag)
 	if diag.ShadowRouteStatus != "not_applicable" || len(diag.RoutePriority) != 0 ||
-		diag.ProcessArchitecture != "unknown" || diag.ProcessArchitectureStatus != windowsArchitectureUnavailable ||
-		diag.BinaryFingerprintStatus != windowsFingerprintUnavailable ||
-		diag.BinarySigningStatus != windowsSigningUnavailable ||
-		diag.CompatibilityRegistryStatus != windowsRegistryNotEvaluated ||
-		diag.ConfigCipherRouteStatus != windowsConfigCipherNotEvaluated {
+		diag.ProcessArchitecture != "unknown" || diag.ProcessArchitectureStatus != windowsroute.ArchitectureUnavailable ||
+		diag.BinaryFingerprintStatus != windowsroute.FingerprintUnavailable ||
+		diag.BinarySigningStatus != windowsroute.SigningUnavailable ||
+		diag.CompatibilityRegistryStatus != windowsroute.RegistryNotEvaluated ||
+		diag.ConfigCipherRouteStatus != windowsroute.ConfigCipherNotEvaluated {
 		t.Fatalf("unexpected Windows diagnostic defaults: %+v", diag)
 	}
 	if diag.WindowsRouteEvidence == nil || diag.FallbackStageCounts == nil || len(diag.WindowsRouteEvidence) != 0 ||

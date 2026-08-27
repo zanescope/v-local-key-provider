@@ -3,6 +3,7 @@ package provider
 // 这些 facade 测试固定 main package 与 internal/platform/darwin 的集成契约。
 
 import (
+	darwinroute "github.com/zanescope/v-local-key-provider/internal/platform/darwin"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -140,10 +141,10 @@ func TestPhase3ProviderNeverExecutesASIPStateChange(t *testing.T) {
 
 func completeDarwinRouteEvidence() darwinBinaryEvidence {
 	return darwinBinaryEvidence{
-		Version: "4.1.10", Build: "31012", ExecutableSHA256: strings.Repeat("a", 64), BinaryFingerprintStatus: darwinFingerprintVerified,
-		BinarySigningStatus: darwinSigningVerified, SigningTeamID: "TEAM123456",
+		Version: "4.1.10", Build: "31012", ExecutableSHA256: strings.Repeat("a", 64), BinaryFingerprintStatus: darwinroute.FingerprintVerified,
+		BinarySigningStatus: darwinroute.SigningVerified, SigningTeamID: "TEAM123456",
 		DesignatedRequirementSHA256: strings.Repeat("b", 64), ProcessArchitecture: "arm64",
-		ProcessArchitectureStatus: darwinArchitectureVerified, ProcessTranslationStatus: "native",
+		ProcessArchitectureStatus: darwinroute.ArchitectureVerified, ProcessTranslationStatus: "native",
 		MacOSVersion: "15.6.1", MacOSMajorMinor: "15.6",
 	}
 }
@@ -176,19 +177,19 @@ func TestPhase3CompatibilityRegistryRequiresAnExactEvidenceMatch(t *testing.T) {
 		ValidatedCipherProfiles: []string{defaultProfileID},
 	}
 	decision := evaluateDarwinRoute(evidence, []darwinCompatibilityEntry{entry})
-	if decision.CompatibilityRegistryStatus != darwinRegistryRegisteredSupported || decision.StandardRouteStatus != darwinStandardEligibleRegistry {
+	if decision.CompatibilityRegistryStatus != darwinroute.RegistryRegisteredSupported || decision.StandardRouteStatus != darwinroute.StandardEligibleRegistry {
 		t.Fatalf("exact registry evidence was not accepted: %#v", decision)
 	}
 	evidence.ExecutableSHA256 = strings.Repeat("c", 64)
 	decision = evaluateDarwinRoute(evidence, []darwinCompatibilityEntry{entry})
-	if decision.CompatibilityRegistryStatus != darwinRegistryUnregistered || decision.StandardRouteStatus != darwinStandardEligibleGeneric {
+	if decision.CompatibilityRegistryStatus != darwinroute.RegistryUnregistered || decision.StandardRouteStatus != darwinroute.StandardEligibleGeneric {
 		t.Fatalf("a different fingerprint inherited registry support: %#v", decision)
 	}
 }
 
 func TestPhase3UnregisteredBuildGetsOnlyTheGenericSymbolRoute(t *testing.T) {
 	decision := evaluateDarwinRoute(completeDarwinRouteEvidence(), nil)
-	if decision.CompatibilityRegistryStatus != darwinRegistryUnregistered || decision.StandardRouteStatus != darwinStandardEligibleGeneric ||
+	if decision.CompatibilityRegistryStatus != darwinroute.RegistryUnregistered || decision.StandardRouteStatus != darwinroute.StandardEligibleGeneric ||
 		!containsString(decision.Evidence, "generic_symbol_route_only") {
 		t.Fatalf("unexpected unregistered route decision: %#v", decision)
 	}
@@ -199,8 +200,8 @@ func TestPhase5ReleaseRejectsUnregisteredDarwinBuild(t *testing.T) {
 	buildMode = "release"
 	t.Cleanup(func() { buildMode = previous })
 	decision := evaluateDarwinRoute(completeDarwinRouteEvidence(), nil)
-	if decision.CompatibilityRegistryStatus != darwinRegistryUnregistered ||
-		decision.StandardRouteStatus != darwinStandardUnsupported || darwinStandardRouteEligible(decision) ||
+	if decision.CompatibilityRegistryStatus != darwinroute.RegistryUnregistered ||
+		decision.StandardRouteStatus != darwinroute.StandardUnsupported || darwinStandardRouteEligible(decision) ||
 		!containsString(decision.Evidence, "release_requires_registry_exact_match") {
 		t.Fatalf("release accepted an unregistered Darwin build: %#v", decision)
 	}
@@ -222,12 +223,12 @@ func TestPhase5DarwinReleaseRegistryRequiresPromotionDigest(t *testing.T) {
 		RouteSupportState: "supported", ValidatedCipherProfiles: []string{defaultProfileID},
 	}
 	decision := evaluateDarwinRoute(evidence, []darwinCompatibilityEntry{entry})
-	if decision.CompatibilityRegistryStatus != darwinRegistryRegisteredRejected {
+	if decision.CompatibilityRegistryStatus != darwinroute.RegistryRegisteredRejected {
 		t.Fatalf("release accepted an unpromoted Darwin candidate: %#v", decision)
 	}
 	releasePromotionSHA256 = strings.Repeat("d", 64)
 	decision = evaluateDarwinRoute(evidence, []darwinCompatibilityEntry{entry})
-	if decision.CompatibilityRegistryStatus != darwinRegistryRegisteredSupported ||
+	if decision.CompatibilityRegistryStatus != darwinroute.RegistryRegisteredSupported ||
 		!containsString(decision.Evidence, "release_promotion_verified") ||
 		!containsString(decision.Evidence, "real_device_evidence_present") {
 		t.Fatalf("promoted Darwin release candidate was rejected: %#v", decision)
@@ -268,15 +269,15 @@ func TestPhase3SIPDisabledRouteHasAnIndependentStableID(t *testing.T) {
 
 func TestPhase3InvalidSigningAndIncompleteEvidenceFailClosed(t *testing.T) {
 	evidence := completeDarwinRouteEvidence()
-	evidence.BinarySigningStatus = darwinSigningInvalid
+	evidence.BinarySigningStatus = darwinroute.SigningInvalid
 	decision := evaluateDarwinRoute(evidence, nil)
-	if decision.CompatibilityRegistryStatus != darwinRegistryUntrustedBinary || decision.StandardRouteStatus != darwinStandardUnsupported {
+	if decision.CompatibilityRegistryStatus != darwinroute.RegistryUntrustedBinary || decision.StandardRouteStatus != darwinroute.StandardUnsupported {
 		t.Fatalf("invalid signing was not rejected: %#v", decision)
 	}
 	evidence = completeDarwinRouteEvidence()
-	evidence.ProcessArchitectureStatus = darwinArchitectureUnavailable
+	evidence.ProcessArchitectureStatus = darwinroute.ArchitectureUnavailable
 	decision = evaluateDarwinRoute(evidence, nil)
-	if decision.CompatibilityRegistryStatus != darwinRegistryNotEvaluated || decision.StandardRouteStatus != darwinStandardNotEvaluated {
+	if decision.CompatibilityRegistryStatus != darwinroute.RegistryNotEvaluated || decision.StandardRouteStatus != darwinroute.StandardNotEvaluated {
 		t.Fatalf("incomplete architecture evidence was upgraded: %#v", decision)
 	}
 }
@@ -289,7 +290,7 @@ func TestPhase3SupportedRegistryEntryRequiresProfiles(t *testing.T) {
 		MacOSMajorMinor: evidence.MacOSMajorMinor, RouteSupportState: "supported",
 	}
 	decision := evaluateDarwinRoute(evidence, []darwinCompatibilityEntry{entry})
-	if decision.CompatibilityRegistryStatus != darwinRegistryRegisteredRejected || decision.StandardRouteStatus != darwinStandardUnsupported {
+	if decision.CompatibilityRegistryStatus != darwinroute.RegistryRegisteredRejected || decision.StandardRouteStatus != darwinroute.StandardUnsupported {
 		t.Fatalf("profile-free registry support was accepted: %#v", decision)
 	}
 }

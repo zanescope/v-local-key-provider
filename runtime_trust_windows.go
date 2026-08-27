@@ -13,6 +13,7 @@ import (
 	"strings"
 	"unsafe"
 
+	windowsroute "github.com/zanescope/v-local-key-provider/internal/platform/windows"
 	"golang.org/x/sys/windows"
 )
 
@@ -72,7 +73,7 @@ func verifiedWindowsSignerSHA256(data *windows.WinTrustData) (string, error) {
 func windowsAuthenticodeEvidence(path string) (string, string) {
 	pathPointer, err := windows.UTF16PtrFromString(path)
 	if err != nil {
-		return windowsSigningUnavailable, ""
+		return windowsroute.SigningUnavailable, ""
 	}
 	fileInfo := windows.WinTrustFileInfo{
 		Size: uint32(unsafe.Sizeof(windows.WinTrustFileInfo{})), FilePath: pathPointer,
@@ -93,12 +94,12 @@ func windowsAuthenticodeEvidence(path string) (string, string) {
 	data.StateAction = windows.WTD_STATEACTION_CLOSE
 	_ = windows.WinVerifyTrustEx(windows.InvalidHWND, &windows.WINTRUST_ACTION_GENERIC_VERIFY_V2, &data)
 	if verifyErr != nil {
-		return windowsSigningInvalid, ""
+		return windowsroute.SigningInvalid, ""
 	}
 	if signerErr != nil || !validWindowsSHA256(signer) {
-		return windowsSigningUnavailable, ""
+		return windowsroute.SigningUnavailable, ""
 	}
-	return windowsSigningVerified, signer
+	return windowsroute.SigningVerified, signer
 }
 
 func expectedWindowsSignerSHA256() (string, error) {
