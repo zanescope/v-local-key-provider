@@ -7,7 +7,7 @@ import (
 	"net"
 )
 
-func listen(config Config, _ string, _ string, _ bool) (net.Listener, string, string, func(), error) {
+func listen(config Config, _ string, _ bool) (net.Listener, string, string, func(), error) {
 	if config.ReleaseBuild {
 		return nil, "", "", func() {}, errors.New("release acquisition daemon transport is unsupported on this platform")
 	}

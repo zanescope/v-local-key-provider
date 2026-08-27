@@ -26,6 +26,9 @@ const (
 	SchemaVersion = 1
 	idleLifetime  = 20 * time.Second
 	authTimeout   = 5 * time.Second
+	// 与 CLI 侧查询 daemon 的上限保持一致。每条连接只承载一个请求，正常用法远低于
+	// 这个值；它的作用是给「同一用户下的进程不断建连」设一个边界。
+	maxConcurrentConnections = 32
 )
 
 // Endpoint 是向 daemon client 发布的私有连接描述符。
@@ -146,6 +149,18 @@ func RandomToken(zeroSensitive func([]byte)) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(raw), nil
+}
+
+// randomEndpointName 生成与认证 token 无关的传输端点名。端点名会出现在目录列表
+// （Unix socket）和管道命名空间（Windows named pipe）里，而 Windows 的管道名可被
+// 同会话的任意进程枚举：用 token 前缀命名等于把 96 bit 认证材料公开。端点名只需
+// 唯一，不承担认证职责，因此必须独立生成。
+func randomEndpointName() (string, error) {
+	value := make([]byte, 12)
+	if _, err := rand.Read(value); err != nil {
+		return "", errors.New("daemon endpoint name could not be generated")
+	}
+	return hex.EncodeToString(value), nil
 }
 
 func (service *Service) validateEndpointPath(path string) (string, error) {
@@ -392,7 +407,7 @@ func (service *Service) ServeAs(endpointPath, advertisedProviderPath, clientPath
 		backend.Close()
 		return err
 	}
-	listener, transport, address, cleanupTransport, err := listen(service.config, path, token, developmentTCP)
+	listener, transport, address, cleanupTransport, err := listen(service.config, path, developmentTCP)
 	if err != nil {
 		backend.Close()
 		return err
@@ -421,6 +436,9 @@ func (service *Service) ServeAs(endpointPath, advertisedProviderPath, clientPath
 	defer backend.Close()
 	var stopOnce sync.Once
 	stop := func() { stopOnce.Do(func() { _ = listener.Close() }) }
+	// handleConnection 先做 peer 校验才继续，但 goroutine 与文件描述符在校验完成前
+	// 就已经分配。没有上限时，同一用户下的任意进程都能靠不断建连耗尽这两者。
+	admitted := make(chan struct{}, maxConcurrentConnections)
 	idleSince := time.Now()
 	for {
 		setListenerDeadline(listener, time.Now().Add(time.Second))
@@ -442,14 +460,23 @@ func (service *Service) ServeAs(endpointPath, advertisedProviderPath, clientPath
 			return acceptErr
 		}
 		idleSince = time.Now()
-		handlers.Add(1)
-		activeHandlers.Add(1)
-		go func() {
-			defer handlers.Done()
-			defer activeHandlers.Add(-1)
-			if service.handleConnection(connection, endpoint, backend) {
-				stop()
-			}
-		}()
+		select {
+		case admitted <- struct{}{}:
+			handlers.Add(1)
+			activeHandlers.Add(1)
+			go func() {
+				defer func() {
+					<-admitted
+					activeHandlers.Add(-1)
+					handlers.Done()
+				}()
+				if service.handleConnection(connection, endpoint, backend) {
+					stop()
+				}
+			}()
+		default:
+			service.writeResponse(connection, failure("busy", "daemon concurrent connection limit reached"))
+			_ = connection.Close()
+		}
 	}
 }

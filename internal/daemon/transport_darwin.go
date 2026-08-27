@@ -16,7 +16,7 @@ import (
 
 const DarwinTransport = "darwin_unix"
 
-func listen(_ Config, endpointPath, token string, developmentTCP bool) (net.Listener, string, string, func(), error) {
+func listen(_ Config, endpointPath string, developmentTCP bool) (net.Listener, string, string, func(), error) {
 	if developmentTCP {
 		listener, err := net.Listen("tcp4", "127.0.0.1:0")
 		if err != nil {
@@ -24,7 +24,11 @@ func listen(_ Config, endpointPath, token string, developmentTCP bool) (net.List
 		}
 		return listener, "tcp4-development", listener.Addr().String(), func() {}, nil
 	}
-	socketPath := filepath.Join(filepath.Dir(endpointPath), ".v-local-key-provider-"+token[:24]+".sock")
+	name, err := randomEndpointName()
+	if err != nil {
+		return nil, "", "", func() {}, err
+	}
+	socketPath := filepath.Join(filepath.Dir(endpointPath), ".v-local-key-provider-"+name+".sock")
 	if len(socketPath) >= 100 {
 		return nil, "", "", func() {}, errors.New("daemon Unix socket path exceeds the platform limit")
 	}

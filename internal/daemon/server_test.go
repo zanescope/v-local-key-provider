@@ -3,9 +3,12 @@ package daemon
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	protocolmodel "github.com/zanescope/v-local-key-provider/internal/protocol"
@@ -96,5 +99,34 @@ func TestRunStdioUsesInjectedBackendAndWireDefaults(t *testing.T) {
 	}
 	if response.Protocol != protocolmodel.Name || response.RequestID != request.RequestID {
 		t.Fatalf("stdio wire defaults changed: %+v", response)
+	}
+}
+
+func TestEndpointNameIsIndependentOfTheAuthenticationToken(t *testing.T) {
+	first, err := randomEndpointName()
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := randomEndpointName()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first == second {
+		t.Fatal("端点名不是随机生成的")
+	}
+	if decoded, err := hex.DecodeString(first); err != nil || len(decoded) != 12 {
+		t.Fatalf("端点名不是 12 字节十六进制：%q err=%v", first, err)
+	}
+
+	// Unix socket 名出现在目录列表里，Windows 命名管道名可被同会话的任意进程枚举。
+	// 任何由认证 token 派生的端点名都会把认证材料公开，因此在源码层钉住这条边界。
+	for _, transport := range []string{"transport_darwin.go", "transport_windows.go", "transport_other.go"} {
+		payload, readErr := os.ReadFile(transport)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if strings.Contains(string(payload), "token[:") {
+			t.Errorf("%s 又从认证 token 派生端点名", transport)
+		}
 	}
 }

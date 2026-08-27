@@ -245,7 +245,7 @@ func (value *namedPipeListener) SetDeadline(deadline time.Time) error {
 	return nil
 }
 
-func listen(_ Config, _ string, token string, developmentTCP bool) (net.Listener, string, string, func(), error) {
+func listen(_ Config, _ string, developmentTCP bool) (net.Listener, string, string, func(), error) {
 	if developmentTCP {
 		listener, err := net.Listen("tcp4", "127.0.0.1:0")
 		if err != nil {
@@ -253,7 +253,12 @@ func listen(_ Config, _ string, token string, developmentTCP bool) (net.Listener
 		}
 		return listener, "tcp4-development", listener.Addr().String(), func() {}, nil
 	}
-	path := `\\.\pipe\LOCAL\v-local-key-provider-` + token[:24]
+	// 命名管道的名字可被同会话的任意进程枚举，因此绝不能由认证 token 派生。
+	name, err := randomEndpointName()
+	if err != nil {
+		return nil, "", "", func() {}, err
+	}
+	path := `\\.\pipe\LOCAL\v-local-key-provider-` + name
 	listener, err := newNamedPipeListener(path)
 	if err != nil {
 		return nil, "", "", func() {}, err

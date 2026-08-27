@@ -193,3 +193,80 @@ func TestPhase2DaemonRejectsGuessedTokenWithoutAffectingAuthenticatedSession(t *
 		t.Fatal("acquisition daemon did not stop")
 	}
 }
+
+// daemonShutdownWhenAdmitted 反复尝试 shutdown，直到并发名额释放。占位连接关闭后
+// handler 才会退出，因此 shutdown 本身也需要一个可用名额。
+func daemonShutdownWhenAdmitted(t *testing.T, endpoint acquisitionDaemonEndpoint) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		connection, err := net.DialTimeout("tcp4", endpoint.Address, time.Second)
+		if err != nil {
+			time.Sleep(20 * time.Millisecond)
+			continue
+		}
+		encodeErr := json.NewEncoder(connection).Encode(acquisitionDaemonRequest{
+			SchemaVersion: acquisitionDaemonSchemaVersion, Token: endpoint.Token, Command: "shutdown",
+		})
+		var result acquisitionDaemonResponse
+		decodeErr := json.NewDecoder(connection).Decode(&result)
+		_ = connection.Close()
+		if encodeErr == nil && decodeErr == nil && result.Error == nil && result.Status == "stopping" {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("并发名额释放后 daemon 仍未接受 shutdown")
+}
+
+// peer 校验发生在 goroutine 与文件描述符分配之后，因此没有并发上限时，同一用户下的
+// 任意进程都能靠不断建连耗尽两者。这里不固定上限的具体数值，只要求上限确实存在。
+func TestAcquisitionDaemonBoundsConcurrentConnections(t *testing.T) {
+	endpointPath := filepath.Join(secureDaemonTestDirectory(t), "endpoint.json")
+	finished := make(chan error, 1)
+	go func() { finished <- serveAcquisitionDaemon(endpointPath) }()
+	endpoint := waitForAcquisitionEndpoint(t, endpointPath, finished)
+
+	// 已接纳的连接在认证超时前一直占用名额，因此必须先一次性建满，再回读。
+	const attempts = 128
+	idle := make([]net.Conn, 0, attempts)
+	bounded := false
+	for attempt := 0; attempt < attempts; attempt++ {
+		connection, err := net.DialTimeout("tcp4", endpoint.Address, time.Second)
+		if err != nil {
+			bounded = true
+			break
+		}
+		idle = append(idle, connection)
+	}
+	// 被拒绝的连接会立即收到失败响应并被关闭；已接纳的连接在认证超时前没有任何输出。
+	// 从最后建立的连接开始回读，命中一条即可。
+	for index := len(idle) - 1; index >= 0 && !bounded; index-- {
+		_ = idle[index].SetReadDeadline(time.Now().Add(100 * time.Millisecond))
+		payload := make([]byte, 1024)
+		read, err := idle[index].Read(payload)
+		if err != nil || read == 0 {
+			continue
+		}
+		var result acquisitionDaemonResponse
+		if json.Unmarshal(payload[:read], &result) == nil && result.Error != nil && result.Error.Code == "busy" {
+			bounded = true
+		}
+	}
+	for _, connection := range idle {
+		_ = connection.Close()
+	}
+	if !bounded {
+		t.Fatalf("daemon 接受了 %d 条并发连接，没有任何一条被拒绝", attempts)
+	}
+
+	daemonShutdownWhenAdmitted(t, endpoint)
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("acquisition daemon 未停止")
+	}
+}
