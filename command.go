@@ -28,6 +28,9 @@ func Run(config BuildConfig) int {
 	if config.Version != "" {
 		version = config.Version
 	}
+	if !knownBuildMode(config.Mode) {
+		return writeError(errors.New("build identity was not stamped by the build"), 3)
+	}
 	buildMode = config.Mode
 	releaseSignerSHA256 = config.ReleaseSignerSHA256
 	releasePromotionSHA256 = config.ReleasePromotionSHA256

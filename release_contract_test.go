@@ -4,8 +4,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -464,6 +468,111 @@ func TestPhase5SensitiveOutputBufferOverwritesSupersededBacking(t *testing.T) {
 	for index, value := range currentBacking {
 		if value != 0 {
 			t.Fatalf("sensitive output backing buffer was not overwritten at byte %d", index)
+		}
+	}
+}
+
+// linkerStampedMainVars 收集 cmd/v-local-key-provider/main.go 中所有可被 -X 注入的
+// 包级变量。-X 只对 string 类型的包级变量生效，其余类型会被链接器静默忽略。
+func linkerStampedMainVars(t *testing.T) map[string]bool {
+	t.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), filepath.Join("cmd", "v-local-key-provider", "main.go"), nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	values := map[string]bool{}
+	for _, declaration := range file.Decls {
+		general, ok := declaration.(*ast.GenDecl)
+		if !ok || general.Tok != token.VAR {
+			continue
+		}
+		for _, specification := range general.Specs {
+			value, ok := specification.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			stringTyped := false
+			if identifier, ok := value.Type.(*ast.Ident); ok && identifier.Name == "string" {
+				stringTyped = true
+			}
+			for _, expression := range value.Values {
+				if literal, ok := expression.(*ast.BasicLit); ok && literal.Kind == token.STRING {
+					stringTyped = true
+				}
+			}
+			if !stringTyped {
+				continue
+			}
+			for _, name := range value.Names {
+				values[name.Name] = true
+			}
+		}
+	}
+	return values
+}
+
+// Go 的链接器对不存在、拼错或非 string 的 -X 目标是静默忽略的：ldflags 一旦失效，
+// 签名 release 二进制会带着默认的 development 模式出厂，而 releaseBuild() 为 false
+// 时所有运行时信任校验都直接放行。既有契约只单向检查了构建脚本里包含这些字符串，
+// 因此这里反向确认每个 -X main.<name> 都确实对应一个可注入的包级变量，并且真的被
+// 传进 provider.Run。
+func TestReleaseLdflagsTargetsResolveToStampableMainVars(t *testing.T) {
+	declared := linkerStampedMainVars(t)
+	payload, err := os.ReadFile(filepath.Join("cmd", "v-local-key-provider", "main.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := string(payload)
+	pattern := regexp.MustCompile(`-X main\.([A-Za-z_][A-Za-z0-9_]*)=`)
+	seen := map[string]bool{}
+	for _, script := range []string{
+		filepath.Join("scripts", "build.ps1"),
+		filepath.Join("scripts", "build-macos.sh"),
+	} {
+		text, readErr := os.ReadFile(script)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		matches := pattern.FindAllStringSubmatch(string(text), -1)
+		if len(matches) == 0 {
+			t.Fatalf("%s no longer stamps any build identity", script)
+		}
+		for _, match := range matches {
+			name := match[1]
+			seen[name] = true
+			if !declared[name] {
+				t.Errorf("%s stamps -X main.%s, but cmd/v-local-key-provider/main.go declares no stampable string variable of that name; the linker would ignore it silently", script, name)
+				continue
+			}
+			if !strings.Contains(source, name) {
+				t.Errorf("main.%s is stamped but never referenced", name)
+			}
+		}
+	}
+	for _, required := range []string{"buildMode", "releasePromotionSHA256"} {
+		if !seen[required] {
+			t.Errorf("release builds no longer stamp main.%s", required)
+		}
+	}
+	// 被注入的身份必须真的进入 provider.Run，否则包级 buildMode 仍是默认值。
+	run := source[strings.Index(source, "provider.Run("):]
+	for name := range seen {
+		if !strings.Contains(run, name) {
+			t.Errorf("main.%s is stamped but not forwarded into provider.Run", name)
+		}
+	}
+}
+
+func TestUnknownBuildModeIsRejectedInsteadOfTreatedAsDevelopment(t *testing.T) {
+	for _, known := range []string{"development", "candidate", "release", "RELEASE", " release "} {
+		if !knownBuildMode(known) {
+			t.Errorf("已知构建身份 %q 被拒绝", known)
+		}
+	}
+	// 运行时信任校验的宽松分支是 `if !releaseBuild()`，未知取值不能落进去。
+	for _, unknown := range []string{"", "   ", "dev", "prod", "release-candidate"} {
+		if knownBuildMode(unknown) {
+			t.Errorf("未知构建身份 %q 被当成合法取值", unknown)
 		}
 	}
 }

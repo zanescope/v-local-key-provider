@@ -23,6 +23,17 @@ func releaseBuild() bool {
 	return strings.EqualFold(strings.TrimSpace(buildMode), "release")
 }
 
+// knownBuildMode 限定构建身份的取值集合。运行时信任校验的宽松分支是
+// `if !releaseBuild()`，因此任何无法识别的取值都会被当成开发构建放行。把未知取值挡在
+// 入口，可以让「构建身份没有被正确注入」变成启动失败，而不是静默降级的信任策略。
+func knownBuildMode(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "development", "candidate", "release":
+		return true
+	}
+	return false
+}
+
 func releasePromotionReady() bool {
 	return validWindowsSHA256(strings.ToLower(strings.TrimSpace(releasePromotionSHA256)))
 }
