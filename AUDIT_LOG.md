@@ -10,6 +10,7 @@
 
 - macOS runner 的 SIP 实际为 disabled，root 的 discovery-budget 测试因此被更高优先级的 SIP 恢复规则接管。测试现在通过既有 `PlatformDriver` seam 注入中性平台诊断，只验证其声明拥有的发现超时行为；生产 outcome 顺序和 SIP fail-closed 恢复纪律保持不变。
 - Windows runner 的系统临时目录使用 8.3 短路径，`realpath` 返回长路径后被 npm installer 的文本比较误判为 junction。安装目录验证现在逐级 `lstat` 实际祖先和每个新建层级，仍拒绝 symlink/junction，同时不把同一目录的短名/长名别名伪装成 reparse evidence。
+- Windows runner 的管理员 token 还会让 `t.TempDir` 默认 owner 成为 Administrators；daemon 集成夹具此前只写私有 DACL，没有建立生产 validator 所要求的 current-user owner。夹具现在同时写入当前 token user SID 与受保护 DACL；生产 owner/DACL 验证未放宽。
 - 修复后 Windows 定向 discovery-budget 测试、WSL `go test -count=1 ./...` 和 Provider npm 13/13 均通过；最终远端状态以 PR #3 的新提交 checks 为准。
 
 ## 2026-08-26 D-1 workflow/package migration completion

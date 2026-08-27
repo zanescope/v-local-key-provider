@@ -27,8 +27,8 @@ func secureDaemonTestDirectory(t *testing.T) string {
 	}
 	if err := windows.SetNamedSecurityInfo(
 		path, windows.SE_FILE_OBJECT,
-		windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
-		nil, nil, dacl, nil,
+		windows.OWNER_SECURITY_INFORMATION|windows.DACL_SECURITY_INFORMATION|windows.PROTECTED_DACL_SECURITY_INFORMATION,
+		user.User.Sid, nil, dacl, nil,
 	); err != nil {
 		t.Fatal(err)
 	}
