@@ -10,26 +10,23 @@ import (
 	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
-// Options is the acquisition-owned DTO shared by one-shot and session
-// orchestration. The alias prevents either workflow from defining a parallel
-// representation.
+// Options 是由 acquisition 持有、供 one-shot 与 session 编排共享的 DTO。该 alias 防止
+// 任一工作流定义平行表示。
 type Options = acquisitionmodel.Options
 
-// Environment contains daemon-owned context that is fixed before requests are
-// served and must not be accepted from the wire request.
+// Environment 包含由 daemon 持有且在服务请求前固定的 context，不得从 wire request 接受。
 type Environment struct {
 	HelperMode   bool
 	HelperStatus string
 }
 
-// Runtime is the narrow composition seam for workflow orchestration. The
-// coordinator owns state transitions and publication policy; callbacks own OS
-// trust, path validation, target discovery, and platform diagnostic defaults.
+// Runtime 是工作流编排的窄 composition 边界。coordinator 持有状态转换和发布策略；callback
+// 持有 OS 信任、路径验证、target 发现和平台 diagnostic 默认值。
 type Runtime struct {
 	Protocol string
 
-	// ParseOptions transfers CatalogKey ownership to the coordinator even when
-	// it returns an error, so partially constructed sensitive input is cleared.
+	// 即使 ParseOptions 返回错误，也会把 CatalogKey 所有权转移给 coordinator，从而清理
+	// 只完成部分构造的敏感输入。
 	ParseOptions            func(protocolmodel.AcquireRequest) (Options, error)
 	DiscoverTargets         func(string, workbudget.Budget, []byte) (acquisitionmodel.Targets, error)
 	DiscoverMedia           func(string, workbudget.Budget) acquisitionmodel.MediaEvidence
@@ -99,7 +96,7 @@ func (runtime Runtime) validateAcquire() error {
 	return nil
 }
 
-// Coordinator owns the prepare/observe/finalize/cancel workflow around Store.
+// Coordinator 持有围绕 Store 的 prepare/observe/finalize/cancel 工作流。
 type Coordinator struct {
 	store   *Store
 	runtime Runtime

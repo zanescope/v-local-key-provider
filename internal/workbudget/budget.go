@@ -1,11 +1,9 @@
-// Package workbudget owns deadline and cancellation composition for bounded
-// acquisition work. It deliberately exposes no mutable representation.
+// Package workbudget 持有有界采集工作的 deadline 和取消组合，并且有意不暴露可变表示。
 package workbudget
 
 import "time"
 
-// Budget is an immutable-by-convention work limit. Derivation methods return a
-// value whose cancellation storage never aliases the source value.
+// Budget 是按约定不可变的工作限制。派生方法返回的值，其取消存储绝不与源值形成 alias。
 type Budget struct {
 	deadline      time.Time
 	unlimited     bool

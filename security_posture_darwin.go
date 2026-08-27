@@ -2,8 +2,8 @@
 
 package provider
 
-// defaultSecurityPostureStatus is based on csrutil machine evidence. Unknown
-// output stays not_evaluated; it must never be promoted to a verified posture.
+// defaultSecurityPostureStatus 以 csrutil 机器证据为依据。未知输出保持 not_evaluated，
+// 绝不能提升为已验证状态。
 func defaultSecurityPostureStatus() string {
 	enabled, known := darwinSIPEnabled()
 	if !known {

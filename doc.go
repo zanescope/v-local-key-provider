@@ -1,4 +1,3 @@
-// Package provider implements the v-local-key-provider protocol, acquisition
-// state machine, and platform adapters. The executable wiring lives in
-// cmd/v-local-key-provider.
+// Package provider 实现 v-local-key-provider 协议、采集状态机和平台 adapter。
+// 可执行文件装配代码位于 cmd/v-local-key-provider。
 package provider

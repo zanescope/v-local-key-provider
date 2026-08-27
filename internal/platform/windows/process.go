@@ -11,11 +11,11 @@ import (
 	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
-// Handle is an opaque native process handle owned by a NativeDriver.
+// Handle 是由 NativeDriver 持有的不透明原生进程 handle。
 type Handle uintptr
 
-// ProcessEvidence binds one inventory entry to stable executable and account
-// observations. Path is process-local and must never enter diagnostics.
+// ProcessEvidence 把一条 inventory 记录绑定到稳定的可执行文件和账号观察结果。Path 仅供
+// 进程内使用，绝不能进入 diagnostics。
 type ProcessEvidence struct {
 	Process      Process
 	Path         string
@@ -26,9 +26,8 @@ type ProcessEvidence struct {
 	Binding      string
 }
 
-// EvidenceRuntime injects composition-root trust decisions that cannot live in
-// the platform package, including safe executable hashing and primary-signer
-// verification.
+// EvidenceRuntime 注入无法放入 platform package 的 composition-root 信任决策，包括
+// 安全的可执行文件 hash 和 primary-signer 验证。
 type EvidenceRuntime struct {
 	ExecutableSHA256     func(string) string
 	AuthenticodeEvidence func(string) (status, signerSHA256 string)
@@ -39,7 +38,7 @@ type NativeRuntime struct {
 	Sensitive SensitiveRuntime
 }
 
-// ConfigCipherAttempt is the bounded result of one exact registered layout.
+// ConfigCipherAttempt 是一次精确已注册 layout 的有界结果。
 type ConfigCipherAttempt struct {
 	Status             string
 	StructureCount     int
@@ -49,8 +48,8 @@ type ConfigCipherAttempt struct {
 	ScannedBytes       uint64
 }
 
-// NativeDriver is the process/memory seam used by the platform orchestrator.
-// Handles returned by OpenForScan remain owned by the caller until Close.
+// NativeDriver 是平台 orchestrator 使用的进程/内存边界。OpenForScan 返回的 handle 在
+// Close 前仍归调用方所有。
 type NativeDriver interface {
 	ListProcesses() ([]Process, error)
 	CollectEvidence(Process) ProcessEvidence
@@ -96,8 +95,8 @@ func processIdentity(native NativeDriver, process Process) string {
 	return evidence.InstanceID
 }
 
-// ProcessInventoryID summarizes the current ordered target-process inventory
-// without treating PID-only observations as trusted process instances.
+// ProcessInventoryID 汇总当前有序的目标进程 inventory，同时不把只有 PID 的观察结果视为
+// 可信进程实例。
 func ProcessInventoryID(native NativeDriver) string {
 	if native == nil {
 		return "windows:process-driver-unavailable"

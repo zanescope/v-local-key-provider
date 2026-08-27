@@ -134,8 +134,8 @@ func ParseLaunchctlProcessRefs(output string) []ProcessRef {
 	return refs
 }
 
-// DiscoverProcesses owns the bounded ps -> launchctl fallback policy while the
-// composition root supplies the hardened subprocess runner and buffer clearer.
+// DiscoverProcesses 持有有界的 ps -> launchctl fallback 策略；composition root 提供经过
+// 加固的子进程 runner 和 buffer 清理器。
 func DiscoverProcesses(run OutputRunner, clear func([]byte), uid int) ([]Process, string, error) {
 	if run == nil {
 		return nil, "unavailable", errors.New("Darwin process command runner is unavailable")

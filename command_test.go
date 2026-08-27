@@ -195,8 +195,8 @@ func TestRunAcquireReturnsDeadlineDiagnosticsAfterDiscoveryBudget(t *testing.T) 
 		_ acquisitionmodel.PlatformRequest,
 	) (response, diagnostics, error) {
 		diag := newDiagnostics(runtime.GOOS, []string{"database"})
-		// This test owns only discovery-budget behavior. Do not let the CI
-		// host's real SIP posture replace the expected deadline outcome.
+		// 此测试只验证 discovery budget 行为，不允许 CI 主机的真实 SIP 状态改变预期的
+		// deadline 结果。
 		diag.SecurityPostureStatus = "not_applicable"
 		return response{}, diag, nil
 	})

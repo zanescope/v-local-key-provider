@@ -199,7 +199,7 @@ function createPromotion(candidateManifestPath, output, evidencePaths) {
     const evidence = JSON.parse(payload.toString('utf8'));
     const key = `${evidence.runner_os}/${evidence.runner_arch}`;
     const target = candidate.targets.find((entry) => targetKey(entry) === key);
-    if (!target || evidence.schema_version !== 2 || evidence.provider_version !== candidate.provider_version ||
+    if (!target || evidence.schema_version !== 1 || evidence.provider_version !== candidate.provider_version ||
         evidence.candidate_source_commit !== candidate.candidate_source_commit ||
         evidence.candidate_workflow_run_id !== candidate.candidate_workflow_run_id ||
         evidence.candidate_attestation_workflow !== candidate.candidate_attestation_workflow ||

@@ -157,7 +157,7 @@ func (coordinator *Coordinator) sessionRequest(ctx context.Context, request prot
 	case BeginRetryExhausted:
 		return protocolmodel.EnforceSecretPolicy(coordinator.blockedResponse(request, record, "action_retry_budget_exhausted")), nil
 	case BeginReady:
-		// Continue with the detached, deep-cloned state snapshot.
+		// 使用已分离且深度克隆的状态 snapshot 继续执行。
 	default:
 		return protocolmodel.Response{}, errors.New("acquisition session 状态转换无效")
 	}
@@ -268,8 +268,7 @@ func (coordinator *Coordinator) sessionRequest(ctx context.Context, request prot
 	return protocolmodel.EnforceSecretPolicy(result), nil
 }
 
-// Handle executes one workflow transition. Callers must decode and validate
-// the wire request before dispatching it here.
+// Handle 执行一次工作流转换。调用方必须先解码并验证 wire request，再分派到这里。
 func (coordinator *Coordinator) Handle(ctx context.Context, request protocolmodel.AcquireRequest, environment Environment) (protocolmodel.Response, error) {
 	switch request.Workflow.Operation {
 	case "prepare":

@@ -32,9 +32,8 @@ func profileCryptoRuntime(cancelled *atomic.Bool, remaining []budget) providercr
 	}
 }
 
-// pbkdf2SHA512 intentionally keeps the bounded cancellation hook required by
-// parallel passphrase validation. Its output is registered as sensitive until
-// the owning caller clears it.
+// pbkdf2SHA512 有意保留并行 passphrase 验证所需的有界取消 hook。其输出会登记为敏感
+// 数据，直到持有它的调用方完成清理。
 func pbkdf2SHA512(password, salt []byte, iterations int, cancelled *atomic.Bool, remaining ...budget) []byte {
 	result := providercrypto.PBKDF2SHA512Key32(password, salt, iterations, profileCryptoRuntime(cancelled, remaining).Cancelled)
 	markSensitiveBytes(result)

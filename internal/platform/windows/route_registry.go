@@ -37,8 +37,8 @@ const (
 	ConfigCipherSucceeded            = "succeeded"
 )
 
-// BinaryEvidence contains only machine-derived routing inputs. Executable
-// paths remain process-local and cannot enter diagnostics or live evidence.
+// BinaryEvidence 只包含由机器推导的 routing 输入。可执行文件路径仅供进程内使用，不能进入
+// diagnostics 或真机证据。
 type BinaryEvidence struct {
 	Version                   string
 	Build                     string
@@ -51,7 +51,7 @@ type BinaryEvidence struct {
 	ProductIdentity           string
 }
 
-// ConfigCipherRecipe is an exact, bounded layout recipe.
+// ConfigCipherRecipe 是精确且有界的 layout recipe。
 type ConfigCipherRecipe struct {
 	Needle            []byte
 	PointerOffsets    []int64

@@ -291,8 +291,7 @@ func (store *Store) Snapshot(id string) *Record {
 	return store.cloneRecord(store.sessions[id], false)
 }
 
-// ReleaseSnapshot clears mutable sensitive copies without cancelling or
-// closing the live session resources referenced by the snapshot.
+// ReleaseSnapshot 清理可变敏感副本，但不取消或关闭 snapshot 引用的活跃 session 资源。
 func (store *Store) ReleaseSnapshot(snapshot *Record) {
 	if snapshot == nil {
 		return
@@ -310,8 +309,8 @@ func (store *Store) ReleaseSnapshot(snapshot *Record) {
 	snapshot.Context = nil
 }
 
-// Mutate applies a short state transition while holding the store lock. The
-// callback must not perform I/O or invoke acquisition/platform code.
+// Mutate 在持有 store lock 时执行短暂状态转换。callback 不得执行 I/O，也不得调用
+// acquisition/platform 代码。
 func (store *Store) Mutate(id string, mutate func(*Record)) bool {
 	if mutate == nil {
 		return false

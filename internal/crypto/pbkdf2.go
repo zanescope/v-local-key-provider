@@ -1,6 +1,5 @@
-// Package crypto contains bounded cryptographic derivation and authenticated
-// database-page validation. Protocol, catalog, credential, and platform state
-// cannot enter this package.
+// Package crypto 包含有界密码学派生和带认证的数据库 page 验证。protocol、catalog、
+// credential 和 platform 状态不得进入本 package。
 package crypto
 
 import (
@@ -12,8 +11,8 @@ import (
 
 const cancellationCheckInterval = 4096
 
-// PBKDF2SHA512Key32 derives the first 32 bytes of PBKDF2-HMAC-SHA512 and checks
-// cancelled at a bounded interval. A cancelled derivation returns nil.
+// PBKDF2SHA512Key32 派生 PBKDF2-HMAC-SHA512 的前 32 字节，并以有界间隔检查 cancelled。
+// 被取消的派生返回 nil。
 func PBKDF2SHA512Key32(password, salt []byte, iterations int, cancelled func() bool) []byte {
 	if iterations <= 0 {
 		return nil

@@ -239,7 +239,7 @@
 ### Phase 5 闭环结果
 
 - `Release candidate` 以 `buildMode=candidate` 生成四目标 Provider/helper 集合及 `candidate-manifest.json`，精确绑定源码提交、workflow run id、固定资产名和 SHA-256，并生成 GitHub artifact attestation。
-- `Phase 3-4 live regression` 按 run id 跨 workflow 下载该集合，校验全部候选摘要并执行 `gh attestation verify`；真机 runner 直接运行下载件，禁止本地重建，输出 schema v2 内容寻址 evidence。
+- `Phase 3-4 live regression` 按 run id 跨 workflow 下载该集合，校验全部候选摘要并执行 `gh attestation verify`；真机 runner 直接运行下载件，禁止本地重建，输出 schema v1 内容寻址 evidence。
 - 外部 `compatibility-evidence/promotions/<release-tag>.json` 把四目标候选集合与 evidence 摘要绑定。签名 workflow 验证候选提交是 release tag 祖先，且候选之后只允许 `compatibility-evidence/**` 变化；随后按 promotion 的 run id 重新下载候选并以 signer workflow + source digest 复验全部资产 attestation。Windows/macOS builder 校验 promotion 后只把其 SHA-256 注入 release 二进制。
 - release route 只有在编译期 promotion 摘要有效时才输出 `real_device_evidence_present + registry_exact_match + release_promotion_verified`；candidate route 只输出 `registry_candidate_entry + registry_exact_match`。CLI release build 会拒绝 candidate 标记，开发 CLI 则允许它用于受控真机验收。
 - promotion 工具拒绝非普通文件、非内容寻址文件、重复 evidence、错来源提交/run、错 Provider/helper 摘要和缺目标；Go release gate继续严格核对 target identity、route、coverage、profiles 及 eligible registry 全覆盖。

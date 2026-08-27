@@ -1,7 +1,5 @@
-// Package credential owns the structured credential DTO and the policy that
-// promotes verified candidate evidence into account roots or per-database
-// overrides. It depends only on catalog evidence, never collector or platform
-// implementation state.
+// Package credential 持有结构化凭据 DTO，以及把已验证候选证据提升为账号 root 或逐数据库
+// override 的策略。它只依赖 catalog 证据，绝不依赖 collector 或平台实现状态。
 package credential
 
 import (

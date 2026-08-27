@@ -69,8 +69,7 @@ func darwinPeerIdentity(connection net.Conn) (int, uint32, error) {
 	return pid, credentials.Uid, nil
 }
 
-// ProcessExecutablePath returns the executable path reported by the Darwin
-// kernel for a concrete process instance.
+// ProcessExecutablePath 返回 Darwin kernel 为指定进程实例报告的可执行文件路径。
 func ProcessExecutablePath(pid uint32) (string, error) {
 	const kernProcArgs2 = 49
 	mib := []int32{unix.CTL_KERN, kernProcArgs2, int32(pid)}

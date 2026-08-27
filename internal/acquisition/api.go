@@ -110,9 +110,9 @@ func (collector *Collector) TargetSaltMatches(salt []byte) bool {
 	return false
 }
 
-// ConsiderCapturedHMACKey handles the PBKDF rounds=2 CommonCrypto evidence,
-// where the observed salt is the file salt XORed by the registered profile's
-// HMAC mask and the observed password is the effective raw database key.
+// ConsiderCapturedHMACKey 处理 PBKDF rounds=2 的 CommonCrypto 证据；其中观察到的 salt
+// 是文件 salt 与已注册 profile 的 HMAC mask 异或结果，观察到的 password 则是有效的
+// 原始数据库密钥。
 func (collector *Collector) ConsiderCapturedHMACKey(key, observedSalt []byte, origin string) bool {
 	if len(key) != 32 {
 		return false

@@ -294,7 +294,7 @@ func writeLiveEvidence(t *testing.T, result response) {
 		PhaseTimingsMS               map[string]int64 `json:"phase_timings_ms"`
 		ValidatedCipherProfiles      []string         `json:"validated_cipher_profiles"`
 	}{
-		SchemaVersion:         2,
+		SchemaVersion:         1,
 		CandidateSourceCommit: candidateSourceCommit, CandidateWorkflowRunID: candidateWorkflowRunID,
 		CandidateAttestationWorkflow: candidateAttestationWorkflow, CandidateAttestationVerified: true,
 		CandidateArtifactName: candidateArtifactName,

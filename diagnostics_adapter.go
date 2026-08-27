@@ -7,8 +7,8 @@ type diagnostics = diagnosticmodel.Diagnostics
 func platformDiagnosticDefaults() diagnosticmodel.PlatformDefaults {
 	return diagnosticmodel.PlatformDefaults{
 		SecurityPostureStatus: defaultSecurityPostureStatus(),
-		// Shadow has no production implementation in the current build. Keep
-		// this capability fact injected rather than inferred from the platform.
+		// 当前构建没有 Shadow 的 production 实现。该能力事实应保持显式注入，不从平台
+		// 状态推断。
 		DarwinShadowRouteStatus: "unavailable_in_build",
 	}
 }

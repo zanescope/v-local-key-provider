@@ -42,8 +42,8 @@ type AcquireRequest struct {
 	DeadlineMS int64           `json:"deadline_ms"`
 	Workflow   WorkflowRequest `json:"workflow"`
 
-	// PeerIdentity is transport-authenticated metadata. It never comes from or
-	// appears in the JSON request body.
+	// PeerIdentity 是经过 transport 认证的元数据，绝不来自 JSON 请求正文，也不会出现在
+	// 其中。
 	PeerIdentity string `json:"-"`
 }
 

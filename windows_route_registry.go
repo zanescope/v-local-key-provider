@@ -38,8 +38,7 @@ type windowsConfigCipherRecipe = windowsroute.ConfigCipherRecipe
 type windowsCompatibilityEntry = windowsroute.CompatibilityEntry
 type windowsRouteDecision = windowsroute.RouteDecision
 
-// The production registry remains empty until independently promoted live
-// evidence covers each exact candidate and target architecture.
+// 在独立 promotion 的真机证据覆盖每个精确候选及目标架构前，production registry 保持为空。
 var windowsCompatibilityRegistry = []windowsCompatibilityEntry{}
 
 func windowsRoutePolicy() windowsroute.EvaluationPolicy {

@@ -10,9 +10,8 @@ import (
 
 const DefaultProfileID = "wcdb-v4-sha512-256000-r80"
 
-// Profile describes every parameter needed to derive and authenticate a
-// WCDB/SQLCipher first page. A plausible decrypted SQLite header is never
-// sufficient without the page HMAC.
+// Profile 描述派生并认证 WCDB/SQLCipher 首页所需的全部参数。缺少 page HMAC 时，即使
+// 解密后的 SQLite header 看似合理也不足以通过验证。
 type Profile struct {
 	ID                  string
 	CipherAlgorithm     string
@@ -54,8 +53,8 @@ type KeyVerification struct {
 	KeyHex    string
 }
 
-// Runtime keeps cancellation and sensitive-memory ownership at the caller's
-// process boundary. ClearSensitive must erase the supplied slice.
+// Runtime 把取消控制和敏感内存所有权保留在调用方进程边界。ClearSensitive 必须擦除
+// 提供的 slice。
 type Runtime struct {
 	Cancelled      func() bool
 	MarkSensitive  func([]byte)

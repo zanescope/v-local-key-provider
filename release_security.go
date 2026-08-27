@@ -6,21 +6,17 @@ import (
 	"strings"
 )
 
-// buildMode is stamped to "release" by every signed release build. Keeping the
-// default development value lets source builds and protocol fixtures remain
-// usable without weakening the signed distribution.
+// buildMode 会由每次签名 release 构建注入为 "release"。保留默认 development 值，可让
+// 源码构建和协议 fixture 继续可用，同时不削弱签名发行件。
 var buildMode = "development"
 
-// releaseSignerSHA256 is injected into Windows release binaries before signing.
-// Runtime Authenticode validation must match this exact leaf certificate, not
-// merely any certificate trusted by the current machine.
+// releaseSignerSHA256 在签名前注入 Windows release 二进制。运行时 Authenticode 验证
+// 必须匹配这张确切的叶证书，而非仅匹配当前机器信任的任意证书。
 var releaseSignerSHA256 string
 
-// releasePromotionSHA256 is the content digest of the external promotion
-// manifest validated by the signed release builder. The manifest is deliberately
-// not compiled into the live-tested candidate: it binds that candidate to its
-// content-addressed real-device evidence without creating a binary/evidence hash
-// cycle.
+// releasePromotionSHA256 是经签名 release 构建器验证的外部 promotion manifest 内容摘要。
+// 该 manifest 有意不编译进真机测试候选：它把候选与其内容寻址的真机证据绑定，同时避免
+// 形成 binary/evidence hash 循环。
 var releasePromotionSHA256 string
 
 func releaseBuild() bool {

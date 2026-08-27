@@ -294,7 +294,7 @@ func TestPhase5ReleaseEvidenceArtifactIsContentAddressedAndExternallyPromoted(t 
 	evidence := completeWindowsRouteEvidence()
 	entry := fixtureWindowsRegistryEntry(evidence)
 	artifact := releaseEvidenceArtifact{
-		SchemaVersion: 2, CandidateSourceCommit: strings.Repeat("a", 40), CandidateWorkflowRunID: "12345",
+		SchemaVersion: 1, CandidateSourceCommit: strings.Repeat("a", 40), CandidateWorkflowRunID: "12345",
 		CandidateAttestationWorkflow: releaseCandidateAttestationWorkflow, CandidateAttestationVerified: true,
 		CandidateArtifactName: releaseCandidateProviderAsset("windows", "amd64"),
 		RunnerOS:              "windows", RunnerArch: "amd64", ProviderVersion: version,
@@ -377,7 +377,7 @@ func TestPhase5DarwinPromotionBindsProviderHelperAndRoute(t *testing.T) {
 		RouteSupportState: "supported", ValidatedCipherProfiles: []string{defaultProfileID},
 	}
 	artifact := releaseEvidenceArtifact{
-		SchemaVersion: 2, CandidateSourceCommit: strings.Repeat("a", 40), CandidateWorkflowRunID: "12345",
+		SchemaVersion: 1, CandidateSourceCommit: strings.Repeat("a", 40), CandidateWorkflowRunID: "12345",
 		CandidateAttestationWorkflow: releaseCandidateAttestationWorkflow, CandidateAttestationVerified: true,
 		CandidateArtifactName: releaseCandidateProviderAsset("darwin", "arm64"),
 		RunnerOS:              "darwin", RunnerArch: "arm64", ProviderVersion: version,

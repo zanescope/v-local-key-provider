@@ -110,11 +110,9 @@ func (collector *Collector) considerBinaryDatabaseKey(key []byte, preferred bool
 	collector.considerBinaryDatabaseKeyFrom(key, preferred, "structured_memory")
 }
 
-// considerCapturedDatabaseKey handles a key argument observed directly at a
-// CommonCrypto boundary. Unlike broad memory candidates, it must not be
-// discarded by passphrase-shape heuristics before target database HMAC
-// validation. The return value reports target-bound cryptographic acceptance,
-// including duplicate observations of an already accepted key.
+// considerCapturedDatabaseKey 处理在 CommonCrypto 边界直接观察到的 key 参数。与宽泛的
+// 内存候选不同，在执行目标数据库 HMAC 验证前，不得因 passphrase 形态启发式规则将其
+// 丢弃。返回值表示是否获得绑定 target 的密码学接受结果，也包括重复观察到已接受密钥。
 func (collector *Collector) considerCapturedDatabaseKeyFrom(key []byte, origin string) bool {
 	if len(key) != 32 {
 		return false
@@ -131,9 +129,7 @@ func (collector *Collector) considerCapturedDatabaseKeyFrom(key []byte, origin s
 			collector.addDatabaseCandidate(target.Path, verification.KeyHex, verification.ProfileID, origin)
 		}
 	}
-	// Retain high-entropy values for the existing bounded alternative
-	// interpretation without making that heuristic a prerequisite for raw-key
-	// acceptance.
+	// 保留高熵值供现有的有界替代解释使用，但不把该启发式规则作为接受原始密钥的前置条件。
 	if isPotentialPassphrase(key) {
 		collector.considerBinaryDatabaseKeyFrom(key, true, origin)
 	}

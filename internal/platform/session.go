@@ -1,6 +1,5 @@
-// Package platform defines shared evidence exchanged with OS-specific
-// acquisition implementations. Native collectors remain in child packages or
-// build-tagged command adapters.
+// Package platform 定义与各 OS 采集实现交换的共享证据。原生 collector 仍位于子 package
+// 或带 build tag 的命令 adapter 中。
 package platform
 
 type HookSnapshot struct {

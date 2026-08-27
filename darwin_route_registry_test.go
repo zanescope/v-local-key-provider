@@ -1,6 +1,6 @@
 package provider
 
-// These facade tests pin the main-package integration with internal/platform/darwin.
+// 这些 facade 测试固定 main package 与 internal/platform/darwin 的集成契约。
 
 import (
 	"go/ast"

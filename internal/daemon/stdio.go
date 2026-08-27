@@ -11,8 +11,8 @@ import (
 	protocolmodel "github.com/zanescope/v-local-key-provider/internal/protocol"
 )
 
-// RunStdio serves the legacy line-oriented daemon entry point with the same
-// injected acquisition backend used by the authenticated native transport.
+// RunStdio 使用与已认证原生 transport 相同的注入式采集 backend，为旧版逐行 daemon
+// 入口提供服务。
 func (service *Service) RunStdio(reader io.Reader, writer io.Writer) error {
 	backend := service.config.NewBackend(BackendContext{})
 	if err := backend.validate(); err != nil {

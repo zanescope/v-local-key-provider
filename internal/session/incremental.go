@@ -11,8 +11,8 @@ import (
 
 var diagnosticMergePolicies = diagnosticmodel.NewSessionMergePolicies()
 
-// MergeDiagnosticEvidence combines repeated platform passes without mixing
-// fields that must describe one coherent Windows process inventory.
+// MergeDiagnosticEvidence 合并重复的平台 pass，同时不混合必须共同描述同一份一致 Windows
+// 进程 inventory 的字段。
 func MergeDiagnosticEvidence(existing *protocolmodel.Response, next *diagnosticmodel.Diagnostics, configStatusRank func(string) int) {
 	if existing == nil || next == nil {
 		return
@@ -26,15 +26,13 @@ func MergeDiagnosticEvidence(existing *protocolmodel.Response, next *diagnosticm
 	}
 	windowsCurrentSnapshot := next.Platform == "windows" && next.ProcessDiscoveryMethod != ""
 	if next.Platform == "windows" && !windowsCurrentSnapshot {
-		// No platform pass ran (for example every requested ID was already
-		// covered). Preserve one complete snapshot rather than independently
-		// maximizing fields that must describe the same inventory.
+		// 没有执行平台 pass（例如请求的每个 ID 都已覆盖）。保留一份完整 snapshot，而非
+		// 分别最大化那些必须描述同一 inventory 的字段。
 		diagnosticmodel.CopyWindowsProcessSnapshot(next, previous)
 	}
 	if next.Platform == "windows" &&
 		configStatusRank(previous.ConfigCipherRouteStatus) > configStatusRank(next.ConfigCipherRouteStatus) {
-		// Config.Cipher counters and verified keys are cumulative. Keep the
-		// exact binary identity that produced the strongest retained result.
+		// Config.Cipher 计数器和已验证密钥会累积。保留生成最强留存结果的精确二进制身份。
 		diagnosticmodel.CopyWindowsRouteIdentity(next, previous)
 	}
 	diagnosticmodel.MergeSessionFields(previous, next, diagnosticMergePolicies)

@@ -9,8 +9,8 @@ import (
 	protocolmodel "github.com/zanescope/v-local-key-provider/internal/protocol"
 )
 
-// DriverRuntime contains the process-owned policies required by the Windows
-// acquisition driver. Native process access is isolated behind NativeDriver.
+// DriverRuntime 包含 Windows 采集 driver 所需且归进程持有的策略。原生进程访问隔离在
+// NativeDriver 之后。
 type DriverRuntime struct {
 	Acquisition acquisitionmodel.Runtime
 	Registry    []CompatibilityEntry

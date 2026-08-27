@@ -23,12 +23,12 @@ import (
 )
 
 const (
-	SchemaVersion = 2
+	SchemaVersion = 1
 	idleLifetime  = 20 * time.Second
 	authTimeout   = 5 * time.Second
 )
 
-// Endpoint is the private connection descriptor published for a daemon client.
+// Endpoint 是向 daemon client 发布的私有连接描述符。
 type Endpoint struct {
 	SchemaVersion int    `json:"schema_version"`
 	Address       string `json:"address"`
@@ -42,7 +42,7 @@ type Endpoint struct {
 	StartedAt     string `json:"started_at"`
 }
 
-// Request is one authenticated daemon command frame.
+// Request 是一个经过认证的 daemon 命令 frame。
 type Request struct {
 	SchemaVersion int                           `json:"schema_version"`
 	Token         string                        `json:"token"`
@@ -50,13 +50,13 @@ type Request struct {
 	Acquire       *protocolmodel.AcquireRequest `json:"acquire,omitempty"`
 }
 
-// Error is the stable daemon transport error envelope.
+// Error 是稳定的 daemon transport 错误 envelope。
 type Error struct {
 	Code    string `json:"code"`
 	Message string `json:"message"`
 }
 
-// Response is one daemon command response frame.
+// Response 是一个 daemon 命令响应 frame。
 type Response struct {
 	SchemaVersion int                     `json:"schema_version"`
 	Status        string                  `json:"status,omitempty"`
@@ -64,16 +64,15 @@ type Response struct {
 	Error         *Error                  `json:"error,omitempty"`
 }
 
-// BackendContext carries the runtime role established before a session store
-// is created. It prevents the transport package from reaching into Provider
-// session internals.
+// BackendContext 携带在创建 session store 前确定的运行时角色，防止 transport package
+// 访问 Provider session 内部实现。
 type BackendContext struct {
 	HelperMode   bool
 	HelperStatus string
 }
 
-// Backend is the narrow lifecycle surface the daemon needs from acquisition.
-// Function fields keep the Provider's concrete session store private.
+// Backend 是 daemon 从 acquisition 所需的窄生命周期接口。函数字段使 Provider 的具体
+// session store 保持私有。
 type Backend struct {
 	HandleContext func(context.Context, protocolmodel.AcquireRequest) (protocolmodel.Response, error)
 	CancelSession func(string)
@@ -88,9 +87,8 @@ func (backend Backend) validate() error {
 	return nil
 }
 
-// Config defines the explicit trust and acquisition seams owned by the
-// Provider composition root. Native transport and framing remain in this
-// package; release identity policy remains with the Provider runtime.
+// Config 定义 Provider composition root 持有的显式信任和采集边界。原生 transport 与
+// framing 留在本 package；release 身份策略仍归 Provider runtime 所有。
 type Config struct {
 	Version            string
 	ReleaseBuild       bool
@@ -103,14 +101,13 @@ type Config struct {
 	ZeroSensitive      func([]byte)
 }
 
-// Service owns daemon framing, transport and lifecycle while delegating only
-// Provider-specific trust decisions and acquisition work through Config.
+// Service 持有 daemon framing、transport 和生命周期，只通过 Config 委托 Provider 特有的
+// 信任决策与采集工作。
 type Service struct {
 	config Config
 }
 
-// New validates the package boundary once so serving cannot start with a
-// partially wired security policy.
+// New 一次性验证 package 边界，避免在安全策略只完成部分装配时启动服务。
 func New(config Config) (*Service, error) {
 	if strings.TrimSpace(config.Version) == "" || config.NewBackend == nil || config.RuntimeContext == nil ||
 		config.ValidateClientPath == nil || config.IsLinkOrReparse == nil ||
@@ -120,8 +117,8 @@ func New(config Config) (*Service, error) {
 	return &Service{config: config}, nil
 }
 
-// ContextForProvider derives the requested acquisition role from whether a
-// companion helper advertises its original Provider launcher.
+// ContextForProvider 根据 companion helper 是否声明原始 Provider launcher，推导请求的
+// 采集角色。
 func ContextForProvider(advertisedProviderPath string) BackendContext {
 	if advertisedProviderPath == "" {
 		return BackendContext{}
@@ -129,7 +126,7 @@ func ContextForProvider(advertisedProviderPath string) BackendContext {
 	return BackendContext{HelperMode: true, HelperStatus: "used"}
 }
 
-// ValidateProviderVersion enforces an exact Provider/helper version match.
+// ValidateProviderVersion 强制 Provider 与 helper 版本精确匹配。
 func ValidateProviderVersion(advertised, current string) error {
 	if strings.TrimSpace(advertised) == "" || advertised != current {
 		return errors.New("daemon helper version does not match the provider launcher")
@@ -137,8 +134,8 @@ func ValidateProviderVersion(advertised, current string) error {
 	return nil
 }
 
-// RandomToken creates the short-lived authentication token shared by daemon
-// and helper transports while guaranteeing that the raw random bytes are wiped.
+// RandomToken 创建由 daemon 和 helper transport 共享的短生命周期认证 token，并保证
+// 原始随机字节会被擦除。
 func RandomToken(zeroSensitive func([]byte)) (string, error) {
 	if zeroSensitive == nil {
 		return "", errors.New("daemon token cleanup is unavailable")
@@ -266,8 +263,8 @@ func (service *Service) handleConnection(connection net.Conn, endpoint Endpoint,
 		service.writeResponse(connection, failure("unauthorized_peer", "daemon client identity verification failed"))
 		return false
 	}
-	// Identity verification is a short frame-parsing stage. Acquisition timing
-	// starts only after peer, token and request validation have completed.
+	// 身份验证只是短暂的 frame 解析阶段。只有完成 peer、token 和请求验证后，才开始计算
+	// 采集时间。
 	_ = connection.SetReadDeadline(time.Now().Add(authTimeout))
 	reader := bufio.NewReaderSize(connection, protocolmodel.MaxRequestBytes+1)
 	payload, err := reader.ReadSlice('\n')
@@ -324,8 +321,8 @@ func (service *Service) handleConnection(connection net.Conn, endpoint Endpoint,
 		_ = connection.SetReadDeadline(time.Time{})
 		requestContext, cancelRequest := context.WithCancel(context.Background())
 		defer cancelRequest()
-		// Each connection accepts one request. EOF after the authenticated frame
-		// means the CLI exited, so acquisition is cancelled and its session unbound.
+		// 每个连接只接受一个请求。已认证 frame 后出现 EOF 表示 CLI 已退出，因此取消采集并
+		// 解除其 session 绑定。
 		go func() {
 			var extra [1]byte
 			_, _ = connection.Read(extra[:])
@@ -357,19 +354,18 @@ func (service *Service) handleConnection(connection net.Conn, endpoint Endpoint,
 	return false
 }
 
-// Serve starts the development transport using the current executable as the
-// expected client image.
+// Serve 启动 development transport，并把当前可执行文件作为预期 client image。
 func (service *Service) Serve(endpointPath string) error {
 	clientPath, _ := os.Executable()
 	return service.ServeAs(endpointPath, "", clientPath, true)
 }
 
-// ServeForClient starts the native transport bound to an explicit client.
+// ServeForClient 启动绑定到指定 client 的原生 transport。
 func (service *Service) ServeForClient(endpointPath, clientPath string) error {
 	return service.ServeAs(endpointPath, "", clientPath, false)
 }
 
-// ServeAs starts a daemon in Provider or companion-helper mode.
+// ServeAs 以 Provider 或 companion-helper 模式启动 daemon。
 func (service *Service) ServeAs(endpointPath, advertisedProviderPath, clientPath string, developmentTCP bool) error {
 	requestedContext := ContextForProvider(advertisedProviderPath)
 	validatedHelperMode, validatedHelperStatus, identityErr := service.config.RuntimeContext(advertisedProviderPath)
@@ -420,8 +416,7 @@ func (service *Service) ServeAs(endpointPath, advertisedProviderPath, clientPath
 	defer service.removeEndpoint(path, token)
 	var handlers sync.WaitGroup
 	var activeHandlers atomic.Int64
-	// Cancel sessions before waiting for request handlers so budget-aware scans
-	// can leave cleanly during shutdown.
+	// 在等待请求 handler 前先取消 session，使感知 budget 的扫描能在 shutdown 时干净退出。
 	defer handlers.Wait()
 	defer backend.Close()
 	var stopOnce sync.Once

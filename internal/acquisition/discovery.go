@@ -230,9 +230,8 @@ func TargetsFromCatalog(catalog catalogmodel.Catalog, pages []DatabasePage) Targ
 	return targetsFromCatalog(catalog, pages)
 }
 
-// MissingTargets returns the exact required database subset that has not
-// already been covered. Existing target pages are referenced as read-only
-// evidence and are not copied.
+// MissingTargets 返回尚未覆盖的精确必需数据库子集。现有 target page 仅作为只读证据引用，
+// 不会复制。
 func MissingTargets(targets Targets, existing map[string]string) Targets {
 	if len(existing) == 0 {
 		return targets
@@ -247,8 +246,7 @@ func MissingTargets(targets Targets, existing map[string]string) Targets {
 	return targetsFromCatalog(subset, pages)
 }
 
-// TargetsForProfiles filters a target set to pages whose registered profile is
-// eligible for one exact platform recipe.
+// TargetsForProfiles 把 target 集合筛选为其已注册 profile 符合某个精确平台 recipe 的 page。
 func TargetsForProfiles(targets Targets, profiles []string) Targets {
 	allowedProfiles := make(map[string]bool, len(profiles))
 	for _, profile := range profiles {

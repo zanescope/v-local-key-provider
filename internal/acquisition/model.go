@@ -1,6 +1,5 @@
-// Package acquisition owns target discovery, candidate collection, and
-// cryptographic validation. Platform code supplies OS policy and process
-// observations through the narrow interfaces in this package.
+// Package acquisition 持有 target 发现、候选收集和密码学验证。平台代码通过本 package
+// 的窄接口提供 OS 策略和进程观察结果。
 package acquisition
 
 import (
@@ -13,7 +12,7 @@ import (
 
 type DatabasePage = catalogmodel.Page
 
-// Targets is the discovery result consumed as read-only input by platform collectors.
+// Targets 是供平台 collector 以只读输入方式使用的发现结果。
 type Targets struct {
 	BySalt  map[string][]string
 	Pages   []DatabasePage
@@ -21,15 +20,14 @@ type Targets struct {
 	Catalog catalogmodel.Catalog
 }
 
-// MediaEvidence contains bounded samples used to validate media-key candidates.
+// MediaEvidence 包含用于验证媒体密钥候选的有界样本。
 type MediaEvidence struct {
 	V2Blocks      [][16]byte
 	XORCandidates map[byte]int
 }
 
-// PlatformRequest contains only the acquisition inputs an OS driver needs.
-// Catalog-key handling and final response assembly remain at the acquisition
-// workflow edge.
+// PlatformRequest 只包含 OS driver 所需的采集输入。catalog key 处理和最终响应组装仍位于
+// 采集工作流边界。
 type PlatformRequest struct {
 	AccountDir      string
 	DBDir           string
@@ -42,16 +40,15 @@ type PlatformRequest struct {
 	ActionReceipt   string
 }
 
-// PlatformSession is a bounded, synchronized source of long-lived platform
-// observations. Implementations must make Close idempotent.
+// PlatformSession 是长期平台观察结果的有界同步来源。实现必须保证 Close 幂等。
 type PlatformSession interface {
 	Collect(*Collector) platformmodel.HookSnapshot
 	Status() platformmodel.HookSnapshot
 	Close()
 }
 
-// PlatformDriver is the command-to-OS acquisition seam. It deliberately uses
-// only internal domain models, so no internal package needs to import main.
+// PlatformDriver 是命令到 OS 的采集边界。它有意只使用内部领域 model，因此没有内部
+// package 需要导入 main。
 type PlatformDriver interface {
 	Acquire(Targets, MediaEvidence, PlatformRequest) (protocolmodel.Response, diagnosticmodel.Diagnostics, error)
 }
@@ -62,7 +59,7 @@ func (driver PlatformDriverFunc) Acquire(targets Targets, media MediaEvidence, r
 	return driver(targets, media, request)
 }
 
-// Private aliases keep the implementation and its package-local tests concise.
+// 私有 alias 用于保持实现及 package 内测试简洁。
 type databaseTargets = Targets
 type databasePage = DatabasePage
 type mediaEvidence = MediaEvidence

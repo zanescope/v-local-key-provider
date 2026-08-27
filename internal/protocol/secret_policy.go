@@ -2,8 +2,7 @@ package protocol
 
 import diagnosticmodel "github.com/zanescope/v-local-key-provider/internal/diagnostics"
 
-// WithoutSecrets returns the same response metadata and diagnostics while
-// removing every credential-bearing field.
+// WithoutSecrets 保留相同的响应元数据和 diagnostics，同时移除全部携带凭据的字段。
 func WithoutSecrets(value Response) Response {
 	value.DatabaseKeys = nil
 	value.DatabaseProfiles = nil
@@ -33,8 +32,7 @@ func HasCompleteRequestedCoverage(diag diagnosticmodel.Diagnostics) bool {
 	return true
 }
 
-// DiagnosticsPermitSecrets is the single publication decision shared by
-// one-shot and session responses.
+// DiagnosticsPermitSecrets 是 one-shot 与 session 响应共享的唯一秘密发布决策。
 func DiagnosticsPermitSecrets(diag diagnosticmodel.Diagnostics) bool {
 	if diag.TargetBindingStatus == "mismatch" || diag.SessionAccountStatus == "known_other" {
 		return false

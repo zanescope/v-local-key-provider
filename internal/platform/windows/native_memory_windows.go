@@ -81,8 +81,8 @@ func (callbacks ScanStageCallbacks) clear(value []byte) {
 	runtime.KeepAlive(value)
 }
 
-// ScanProcessStage owns the Windows virtual-memory walk and bounded reads.
-// ScanChunk must consume data synchronously and must not retain the slice.
+// ScanProcessStage 持有 Windows 虚拟内存遍历和有界读取。ScanChunk 必须同步消费数据，
+// 且不得保留该 slice。
 func ScanProcessStage(
 	handle syscall.Handle,
 	limit uint64,

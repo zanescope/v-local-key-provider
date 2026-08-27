@@ -1,7 +1,6 @@
 package diagnostics
 
-// Outcome is the complete protocol-level workflow decision derived from
-// acquisition evidence.
+// Outcome 是根据采集证据推导出的完整协议级工作流决策。
 type Outcome struct {
 	ResultCode            string
 	WorkflowStatus        string

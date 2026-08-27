@@ -32,9 +32,8 @@ const (
 	StandardUnsupported      = "unsupported_for_target"
 )
 
-// BinaryEvidence contains only machine-verifiable routing inputs. Paths,
-// secrets and user-provided descriptions deliberately do not participate in
-// the decision or appear in diagnostics.
+// BinaryEvidence 只包含机器可验证的 routing 输入。路径、秘密和用户提供的描述有意不参与
+// 决策，也不会出现在 diagnostics 中。
 type BinaryEvidence struct {
 	Version                     string
 	Build                       string
@@ -50,9 +49,8 @@ type BinaryEvidence struct {
 	MacOSMajorMinor             string
 }
 
-// CompatibilityEntry is an exact candidate description. Real-device evidence
-// is bound externally after this candidate has run; evidence digests are never
-// compiled back into the candidate binary.
+// CompatibilityEntry 是精确的候选描述。候选运行后才在外部绑定真机证据；证据摘要绝不会
+// 重新编译进候选二进制。
 type CompatibilityEntry struct {
 	Version                     string
 	Build                       string
@@ -71,8 +69,8 @@ type RouteDecision struct {
 	Evidence                    []string
 }
 
-// EvaluationPolicy supplies the application-owned trust state without making
-// the routing package depend on the main package or its linker-injected values.
+// EvaluationPolicy 提供归应用持有的信任状态，同时避免 routing package 依赖 main package
+// 或其 linker 注入值。
 type EvaluationPolicy struct {
 	ReleaseBuild      bool
 	PromotionReady    bool
@@ -160,8 +158,8 @@ func RegistryEntryRuntimeEligible(entry CompatibilityEntry, policy EvaluationPol
 		(!policy.ReleaseBuild || policy.PromotionReady)
 }
 
-// ProcessAccessFailure converts only machine-verified SIP evidence into the
-// special failure consumed by the external, user-operated SIP workflow.
+// ProcessAccessFailure 只把机器验证的 SIP 证据转换为由外部用户操作 SIP 工作流消费的
+// 特殊失败。
 func ProcessAccessFailure(securityPosture string) string {
 	if securityPosture == "sip_enabled_verified" {
 		return "sip_enabled"

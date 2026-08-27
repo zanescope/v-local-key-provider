@@ -32,8 +32,8 @@ type darwinBinaryEvidence = darwinroute.BinaryEvidence
 type darwinCompatibilityEntry = darwinroute.CompatibilityEntry
 type darwinRouteDecision = darwinroute.RouteDecision
 
-// Exact candidate entries are added before live acceptance. The production
-// registry remains empty until independently promoted evidence exists.
+// 精确候选条目会在真机验收前加入；在存在独立 promotion 的证据前，production registry
+// 保持为空。
 var darwinCompatibilityRegistry = []darwinCompatibilityEntry{}
 
 func darwinRoutePolicy() darwinroute.EvaluationPolicy {

@@ -17,8 +17,8 @@ import (
 
 type CombinedOutputRunner func(context.Context, string, []string, int) ([]byte, error)
 
-// EvidenceRuntime keeps process and binary trust mechanisms at the Provider
-// composition boundary while this package owns Darwin evidence policy.
+// EvidenceRuntime 把进程和二进制信任机制保留在 Provider composition 边界，而 Darwin
+// 证据策略由本 package 持有。
 type EvidenceRuntime struct {
 	RunOutput             OutputRunner
 	RunCombinedOutput     CombinedOutputRunner

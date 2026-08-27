@@ -29,10 +29,9 @@ type cryptProviderCertificate struct {
 }
 
 func pointerReturnedByWinTrust(address uintptr) unsafe.Pointer {
-	// LazyProc.Call exposes native pointer return values as uintptr. WinTrust
-	// owns this memory until WTD_STATEACTION_CLOSE, so immediately preserve the
-	// pointer bits in a pointer-typed value instead of performing arithmetic or
-	// retaining the integer beyond that native lifetime.
+	// LazyProc.Call 会把原生指针返回值暴露为 uintptr。该内存在 WTD_STATEACTION_CLOSE
+	// 之前归 WinTrust 所有，因此立即以指针类型保存其位模式，不对其做算术运算，也不让
+	// 整数值超过原生生命周期继续存在。
 	return *(*unsafe.Pointer)(unsafe.Pointer(&address))
 }
 
@@ -67,10 +66,9 @@ func verifiedWindowsSignerSHA256(data *windows.WinTrustData) (string, error) {
 	return hex.EncodeToString(digest[:]), nil
 }
 
-// windowsAuthenticodeEvidence verifies the file with WinTrust and binds the
-// result to WinTrust's actual primary signer. It is injected into the internal
-// Windows process driver because release trust remains a composition-root
-// responsibility.
+// windowsAuthenticodeEvidence 使用 WinTrust 验证文件，并把结果绑定到 WinTrust 实际的
+// primary signer。由于 release 信任仍由 composition root 负责，它会被注入内部 Windows
+// process driver。
 func windowsAuthenticodeEvidence(path string) (string, string) {
 	pathPointer, err := windows.UTF16PtrFromString(path)
 	if err != nil {
@@ -126,9 +124,8 @@ func verifyWindowsAuthenticode(path string) error {
 	}
 	data := &windows.WinTrustData{
 		Size: uint32(unsafe.Sizeof(windows.WinTrustData{})), UIChoice: windows.WTD_UI_NONE,
-		// The Provider is explicitly offline at runtime. Publication performs the
-		// revocation-sensitive verification; this check validates the embedded
-		// Authenticode signature and cached trust chain without URL retrieval.
+		// Provider 运行时明确保持离线。发布流程负责依赖吊销状态的验证；此检查不获取 URL，
+		// 只验证嵌入的 Authenticode 签名和已缓存的信任链。
 		RevocationChecks: windows.WTD_REVOKE_NONE, UnionChoice: windows.WTD_CHOICE_FILE,
 		StateAction:                     windows.WTD_STATEACTION_VERIFY,
 		FileOrCatalogOrBlobOrSgnrOrCert: unsafe.Pointer(file),

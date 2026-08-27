@@ -8,9 +8,8 @@ import (
 	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
-// sessionPlatformDriver resolves the current composition-root driver for each
-// call so tests and platform builds can replace the driver without rebuilding
-// an already-created session coordinator.
+// sessionPlatformDriver 每次调用都解析当前 composition-root driver，使测试和平台构建
+// 可以替换 driver，而无需重建已经创建的 session coordinator。
 type sessionPlatformDriver struct{}
 
 func (sessionPlatformDriver) Acquire(

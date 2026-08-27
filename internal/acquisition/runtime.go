@@ -11,9 +11,8 @@ import (
 
 const defaultProfileID = providercrypto.DefaultProfileID
 
-// Runtime injects the compatibility registry and process-owned sensitive-memory
-// hooks. A non-nil empty Profiles slice is preserved as an intentional
-// fail-closed registry.
+// Runtime 注入 compatibility registry 和归进程持有的敏感内存 hook。非 nil 的空 Profiles
+// slice 会被保留，作为主动 fail-closed 的 registry。
 type Runtime struct {
 	Profiles       []providercrypto.Profile
 	MarkSensitive  func([]byte)

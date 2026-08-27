@@ -19,8 +19,8 @@ func TestPhase0CatalogProofChangesWhenPhysicalFileChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Preserve the size while changing the proof. Some filesystems have coarse timestamp
-	// granularity, so force a distinct mtime as well.
+	// 修改 proof 时保留文件大小。部分文件系统的时间戳粒度较粗，因此同时强制使用不同的
+	// mtime。
 	if err := os.WriteFile(path, bytes.Repeat([]byte{0x22}, 4096), 0o600); err != nil {
 		t.Fatal(err)
 	}

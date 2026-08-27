@@ -49,9 +49,8 @@ type databaseCandidateInfo struct {
 	origins   map[string]bool
 }
 
-// candidateScanCounters is the single merge boundary for process-isolated scan
-// observations. Keeping the list here prevents each caller from reimplementing a
-// subtly different field-by-field aggregation policy.
+// candidateScanCounters 是进程隔离扫描观察结果的唯一合并边界。把列表集中在这里，可防止
+// 各调用方分别实现略有差异的逐字段聚合策略。
 type candidateScanCounters struct {
 	mediaScanLimited                bool
 	databaseScanLimited             bool
@@ -159,10 +158,9 @@ func (collector *Collector) clearSensitiveBuffers() {
 	collector.internalXORKeys = nil
 }
 
-// mergeValidatedFrom combines only target-bound results from an isolated
-// process collector. Raw memory candidates and unresolved passphrase buffers
-// deliberately stay behind so candidates from different process instances are
-// never combined before cryptographic validation.
+// mergeValidatedFrom 只合并来自隔离进程 collector 且已绑定 target 的结果。原始内存候选和
+// 未解析的 passphrase buffer 会被刻意留在原处，确保不同进程实例的候选在密码学验证前
+// 绝不会混合。
 func (collector *Collector) mergeValidatedFrom(other *Collector) {
 	if collector == nil || other == nil {
 		return
@@ -194,8 +192,8 @@ func (collector *Collector) mergeValidatedFrom(other *Collector) {
 	for candidate := range other.mediaCandidates {
 		collector.mediaCandidates[candidate] = true
 	}
-	// seenDatabase/seenMedia contain unresolved process-memory values and must
-	// never cross a process isolation boundary. Only aggregate their counts.
+	// seenDatabase/seenMedia 包含尚未解析的进程内存值，绝不能跨越进程隔离边界；这里只
+	// 聚合其数量。
 	observations := other.candidateScanCounters
 	observations.candidateObservationCount += len(other.seenDatabase)
 	observations.passphraseObservationCount += len(other.binaryCandidates) + len(other.binaryFallbackCandidates)
@@ -216,10 +214,9 @@ func (collector *Collector) databaseKeys(_ databaseTargets) (map[string]string, 
 		if len(candidates) != 1 {
 			if len(candidates) > 1 {
 				ambiguous++
-				// Two distinct effective keys cannot both authenticate the same
-				// physical first page. Treat this as validator/file-drift failure
-				// regardless of whether the keys were accepted through the same
-				// profile or two different registered profiles.
+				// 两个不同的有效密钥不可能同时认证同一个物理首页。无论这两个密钥是通过
+				// 同一 profile 还是两个不同的已注册 profile 被接受，都按 validator/file-drift
+				// 失败处理。
 				collector.validatorConflictCount++
 			}
 			continue

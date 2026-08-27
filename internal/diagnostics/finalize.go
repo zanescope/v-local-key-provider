@@ -7,16 +7,15 @@ import (
 	credentialmodel "github.com/zanescope/v-local-key-provider/internal/credential"
 )
 
-// PlatformDefaults contains composition-owned facts that diagnostics cannot
-// infer from the wire schema, such as the current machine security posture and
-// whether the Darwin Shadow route exists in this build.
+// PlatformDefaults 包含 diagnostics 无法从 wire schema 推断、且由 composition 持有的
+// 事实，例如当前机器安全状态以及本构建是否存在 Darwin Shadow route。
 type PlatformDefaults struct {
 	SecurityPostureStatus   string
 	DarwinShadowRouteStatus string
 }
 
-// FinalizeInput is intentionally independent of protocol and acquisition to
-// keep diagnostics as a leaf schema package without import cycles.
+// FinalizeInput 有意与 protocol 和 acquisition 解耦，使 diagnostics 保持为没有 import
+// cycle 的叶级 schema package。
 type FinalizeInput struct {
 	Catalog               catalogmodel.Catalog
 	RequiredDatabaseCount int
@@ -171,8 +170,8 @@ func darwinSIPDisabledRouteAttempted(routes []string) bool {
 	return false
 }
 
-// Finalize derives coverage and the single protocol outcome from accumulated
-// acquisition evidence. Callers must not modify result_code afterward.
+// Finalize 根据累积的采集证据推导 coverage 和唯一协议结果。调用方之后不得修改
+// result_code。
 func Finalize(diag *Diagnostics, input FinalizeInput) {
 	if diag == nil {
 		return
@@ -203,8 +202,7 @@ func Finalize(diag *Diagnostics, input FinalizeInput) {
 		diag.TargetBindingStatus = "unknown"
 	}
 	if diag.TargetBindingStatus == "unknown" && diag.MatchedDatabaseCount > 0 {
-		// Per-file page HMAC proves target-data binding, but not which account
-		// the currently running process has selected.
+		// 逐文件 page HMAC 能证明 target 与数据绑定，但不能证明当前运行进程选择了哪个账号。
 		diag.TargetBindingStatus = "hmac_verified"
 	}
 	if diag.SessionAccountStatus == "" {
@@ -258,8 +256,8 @@ func Finalize(diag *Diagnostics, input FinalizeInput) {
 		if diag.DatabaseCount > 0 {
 			diag.DatabaseTargetStatus = "present"
 		}
-		// An empty target set is not successful coverage. A plaintext-only
-		// catalog is complete because it still contains proven catalog entries.
+		// 空 target 集合不代表成功覆盖。仅含明文数据库的 catalog 仍是完整的，因为它依然
+		// 包含经过证明的 catalog 条目。
 		databaseComplete = diag.DatabaseCount > 0 && diag.MissingDatabaseCount == 0 && len(input.Catalog.DiscoveryErrors) == 0
 		switch {
 		case databaseComplete:

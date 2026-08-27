@@ -13,8 +13,8 @@ import (
 
 var version = "0.1.0-dev.0"
 
-// BuildConfig carries linker-stamped command metadata across the narrow cmd
-// wiring boundary. Runtime behavior remains owned and tested by this package.
+// BuildConfig 跨越狭窄的 cmd 装配边界传递 linker 注入的命令元数据。运行时行为仍由
+// 本 package 持有并测试。
 type BuildConfig struct {
 	Version                string
 	Mode                   string
@@ -22,9 +22,8 @@ type BuildConfig struct {
 	ReleasePromotionSHA256 string
 }
 
-// Run executes the Provider command using metadata supplied by the tiny cmd
-// package. Signed builders continue stamping main.* symbols in that command,
-// so moving the wiring cannot silently drop release trust markers.
+// Run 使用精简 cmd package 提供的元数据执行 Provider 命令。签名构建器仍会向该命令的
+// main.* symbol 注入值，因此移动装配代码不会静默丢失 release 信任标记。
 func Run(config BuildConfig) int {
 	if config.Version != "" {
 		version = config.Version

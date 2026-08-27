@@ -7,9 +7,8 @@ import (
 	diagnosticmodel "github.com/zanescope/v-local-key-provider/internal/diagnostics"
 )
 
-// Response is the v1 wire response. Its nested values are aliases of the
-// packages that own those schemas, so the command package cannot define a
-// parallel JSON contract.
+// Response 是 v1 wire response。嵌套值均为持有相应 schema 的 package 所定义类型的 alias，
+// 因此 command package 无法另行定义平行 JSON 契约。
 type Response struct {
 	Protocol           string                            `json:"protocol"`
 	RequestID          string                            `json:"request_id"`

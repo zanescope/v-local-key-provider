@@ -261,7 +261,7 @@ func listen(_ Config, _ string, token string, developmentTCP bool) (net.Listener
 	return listener, WindowsTransport, path, func() {}, nil
 }
 
-// ProcessExecutablePath returns the image path of a concrete Windows process.
+// ProcessExecutablePath 返回指定 Windows 进程的 image 路径。
 func ProcessExecutablePath(pid uint32) (string, error) {
 	process, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, pid)
 	if err != nil {
@@ -281,7 +281,7 @@ func processUserMatchesCurrent(pid uint32) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer windows.CloseHandle(process) //nolint:errcheck -- read-only peer identity cleanup
+	defer windows.CloseHandle(process) //nolint:errcheck -- 清理只读 peer identity
 	var peerToken windows.Token
 	if err := windows.OpenProcessToken(process, windows.TOKEN_QUERY, &peerToken); err != nil {
 		return false, err
@@ -330,7 +330,7 @@ func verifyPeer(config Config, connection net.Conn, transport, clientPath string
 	return "windows:" + strings.ToLower(filepath.Clean(trustedPath)), nil
 }
 
-// DialNamedPipeContext connects to a local daemon named pipe with cancellation.
+// DialNamedPipeContext 以支持取消的方式连接本地 daemon named pipe。
 func DialNamedPipeContext(ctx context.Context, path string) (net.Conn, error) {
 	name, err := windows.UTF16PtrFromString(path)
 	if err != nil {

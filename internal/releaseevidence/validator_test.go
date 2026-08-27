@@ -29,7 +29,7 @@ func writeJSONArtifact(t *testing.T, path string, value any) ([]byte, string) {
 
 func fixtureWindowsEvidence() EvidenceArtifact {
 	return EvidenceArtifact{
-		SchemaVersion: 2, CandidateSourceCommit: strings.Repeat("a", 40), CandidateWorkflowRunID: "12345",
+		SchemaVersion: 1, CandidateSourceCommit: strings.Repeat("a", 40), CandidateWorkflowRunID: "12345",
 		CandidateAttestationWorkflow: CandidateAttestationWorkflow, CandidateAttestationVerified: true,
 		CandidateArtifactName: CandidateProviderAsset("windows", "amd64"), RunnerOS: "windows", RunnerArch: "amd64",
 		ProviderVersion: fixtureProviderVersion, ProviderBinarySHA256: strings.Repeat("b", 64),

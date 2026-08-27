@@ -54,7 +54,7 @@ test('promotion 清单只接受同一 attested 候选集合的内容寻址证据
   const manifestPath = path.join(dist, 'candidate-manifest.json');
   const manifest = candidate.createCandidateManifest(dist, manifestPath, source, '98765');
   const evidencePaths = manifest.targets.map((target) => contentAddressedEvidence(root, {
-    schema_version: 2,
+    schema_version: 1,
     provider_version: metadata.version,
     candidate_source_commit: source,
     candidate_workflow_run_id: '98765',

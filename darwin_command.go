@@ -13,10 +13,8 @@ import (
 
 var errDarwinCommandOutputLimit = errors.New("darwin command output exceeded the safety limit")
 
-// darwinCleanEnvironment deliberately excludes caller-controlled loader,
-// debugger and language-runtime variables. Every supported child is addressed
-// by an absolute path, so it does not need the ambient environment to resolve
-// another executable.
+// darwinCleanEnvironment 主动排除调用方可控的 loader、debugger 和 language runtime
+// 变量。所有受支持的子进程均使用绝对路径，因此不需要借助环境变量解析其他可执行文件。
 func darwinCleanEnvironment() []string {
 	return []string{
 		"PATH=/usr/bin:/bin:/usr/sbin:/sbin",
@@ -27,8 +25,8 @@ func darwinCleanEnvironment() []string {
 	}
 }
 
-// runDarwinCommand owns a fresh process group. Cancellation therefore stops
-// both the requested executable and any descendants it creates.
+// runDarwinCommand 持有一个新 process group，因此取消操作会同时停止请求的可执行文件
+// 及其创建的全部后代进程。
 func runDarwinCommand(ctx context.Context, command *exec.Cmd) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -78,9 +76,8 @@ func (buffer *failClosedDarwinOutput) Write(value []byte) (int, error) {
 	return written, nil
 }
 
-// runBoundedDarwinCommand is the single entry point for short-lived macOS
-// tools. It fixes the executable path, cleans the environment, bounds both
-// streams while the process is running, and applies process-group cleanup.
+// runBoundedDarwinCommand 是短生命周期 macOS 工具的唯一入口。它固定可执行文件路径、
+// 清理环境变量、在进程运行期间限制两个 stream，并执行 process group 清理。
 func runBoundedDarwinCommand(
 	ctx context.Context,
 	path string,

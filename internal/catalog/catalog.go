@@ -1,6 +1,5 @@
-// Package catalog owns database discovery evidence and stable catalog
-// identities. OS-specific file identity and path-safety decisions are injected
-// by the process boundary.
+// Package catalog 持有数据库发现证据和稳定的 catalog 身份。与 OS 相关的文件身份及路径
+// 安全决策由进程边界注入。
 package catalog
 
 import (
@@ -302,9 +301,8 @@ func Discover(dbDir string, key []byte, policy PlatformPolicy) (Catalog, []Page,
 	return result, pages, nil
 }
 
-// MissingRequired returns the exact required database subset that is not
-// already covered. It carries catalog identity and discovery errors forward
-// but does not own or copy page evidence.
+// MissingRequired 返回尚未覆盖的精确必需数据库子集。它会继续传递 catalog 身份和发现
+// 错误，但不持有或复制 page 证据。
 func MissingRequired(catalog Catalog, existing map[string]string) (Catalog, map[string]bool) {
 	if len(existing) == 0 {
 		return catalog, nil

@@ -11,9 +11,8 @@ import (
 	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
-// WorkflowRuntime is the narrow composition seam for one-shot acquisition.
-// Generic discovery, finalization, and response assembly remain package-owned;
-// OS path identity and platform collection stay injected.
+// WorkflowRuntime 是 one-shot 采集的窄 composition 边界。通用发现、收尾和响应组装仍由
+// package 持有；OS 路径身份和平台采集保持注入。
 type WorkflowRuntime struct {
 	DiscoverTargets         func(string, workbudget.Budget, []byte) (Targets, error)
 	DiscoverMedia           func(string, workbudget.Budget) MediaEvidence
@@ -49,9 +48,8 @@ func (runtime WorkflowRuntime) normalized() WorkflowRuntime {
 	return runtime
 }
 
-// Run performs target/media discovery and then delegates to RunPrepared. It
-// owns and clears Options.CatalogKey, including keys generated for direct API
-// callers that did not pass through ParseOptions.
+// Run 执行 target/media 发现后委托给 RunPrepared。它持有并清理 Options.CatalogKey，
+// 也包括为未经过 ParseOptions 的直接 API 调用方生成的密钥。
 func Run(options Options, runtime WorkflowRuntime) (protocolmodel.Response, error) {
 	runtime = runtime.normalized()
 	defer func() { runtime.ClearSensitive(options.CatalogKey) }()
@@ -92,9 +90,8 @@ func Run(options Options, runtime WorkflowRuntime) (protocolmodel.Response, erro
 	return result, err
 }
 
-// RunPrepared executes the platform collector and assembles one final protocol
-// response from already discovered evidence. It does not take ownership of the
-// catalog key; session orchestration also calls this boundary incrementally.
+// RunPrepared 执行平台 collector，并根据已发现的证据组装一个最终协议响应。它不取得
+// catalog key 的所有权；session 编排也会增量调用此边界。
 func RunPrepared(
 	options Options,
 	targets Targets,

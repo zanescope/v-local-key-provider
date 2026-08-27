@@ -1,6 +1,6 @@
 package provider
 
-// These facade tests pin the main-package integration with internal/platform/windows.
+// 这些 facade 测试固定 main package 与 internal/platform/windows 的集成契约。
 
 import (
 	"bytes"

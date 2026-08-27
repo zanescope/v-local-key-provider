@@ -15,8 +15,8 @@ import (
 	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
-// Options is the validated acquisition input shared by one-shot and session
-// orchestration. CatalogKey ownership transfers to the receiving coordinator.
+// Options 是经验证并由 one-shot 与 session 编排共享的采集输入。CatalogKey 所有权会转移
+// 给接收它的 coordinator。
 type Options struct {
 	AccountDir      string
 	DBDir           string
@@ -39,9 +39,8 @@ func (options Options) PlatformRequest() PlatformRequest {
 	}
 }
 
-// OptionPolicy injects the only path fact that is OS-specific: whether a path
-// is a symbolic link or Windows reparse point. The remaining validation is
-// platform-independent and therefore belongs with the Options DTO.
+// OptionPolicy 注入唯一与 OS 相关的路径事实：路径是否为符号链接或 Windows reparse
+// point。其余验证均与平台无关，因此归 Options DTO 所有。
 type OptionPolicy struct {
 	IsLinkOrReparse  func(string, fs.FileMode) (bool, error)
 	RandomCatalogKey func() ([]byte, error)
@@ -98,8 +97,8 @@ func parseCatalogKey(encoded string, policy OptionPolicy) ([]byte, error) {
 	return key, nil
 }
 
-// ParseOptions validates acquisition paths, scopes, budget, and catalog-key
-// ownership without depending on the composition root.
+// ParseOptions 在不依赖 composition root 的情况下验证采集路径、scope、budget 和
+// catalog key 所有权。
 func ParseOptions(request protocolmodel.AcquireRequest, policy OptionPolicy) (Options, error) {
 	policy = policy.normalized()
 	if request.AccountDir == "" || request.DBDir == "" || len(request.Scopes) == 0 {
@@ -166,9 +165,8 @@ func ParseOptions(request protocolmodel.AcquireRequest, policy OptionPolicy) (Op
 	return options, nil
 }
 
-// ParseSecurityPostureOptions deliberately skips every path operation. A
-// restoration check must still work after the account paths moved during a
-// reboot, and it must never acquire credentials.
+// ParseSecurityPostureOptions 有意跳过全部路径操作。即使重启期间账号路径发生移动，恢复
+// 检查仍必须可用，而且绝不能采集凭据。
 func ParseSecurityPostureOptions(request protocolmodel.AcquireRequest, policy OptionPolicy) (Options, error) {
 	policy = policy.normalized()
 	if request.AccountDir == "" || request.DBDir == "" || len(request.Scopes) == 0 {

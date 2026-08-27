@@ -1,6 +1,5 @@
-// Package command owns platform-independent command workflows. Process
-// hardening, caller trust, daemon transport, and OS helper dispatch remain in
-// the composition root.
+// Package command 持有与平台无关的命令工作流。进程加固、调用方信任、daemon transport
+// 和 OS helper 分派仍位于 composition root。
 package command
 
 import (

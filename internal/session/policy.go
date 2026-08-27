@@ -1,6 +1,5 @@
-// Package session owns workflow receipt validation, retry limits, and response
-// merging. Platform acquisition remains behind callbacks at the command
-// boundary; protocol owns the shared response publication policy.
+// Package session 持有工作流 receipt 验证、重试限制和响应合并。平台采集仍位于命令边界的
+// callback 之后；共享响应发布策略由 protocol 持有。
 package session
 
 import (
@@ -62,8 +61,7 @@ func ReceiptFingerprint(receipt *protocolmodel.ActionReceipt, state ReceiptState
 			return "", errors.New("未观测到微信进程实例变化，不能接受 restart 回执")
 		}
 	case "relogin_wechat", "switch_to_target_account":
-		// The receipt authorizes recollection only; it does not prove account
-		// binding or upgrade session_account_status.
+		// receipt 只授权重新收集，不能证明账号绑定，也不能提升 session_account_status。
 	}
 	return strings.Join([]string{
 		receipt.Action, currentProcessInstanceID, state.CatalogID, state.LastRoute, state.LastActionStage,
@@ -86,9 +84,8 @@ func SameScopes(left, right []string) bool {
 	return true
 }
 
-// MissingCatalog returns the exact required database subset that is not
-// already covered. Page evidence is intentionally filtered by the caller so
-// this policy cannot retain or copy sensitive page buffers.
+// MissingCatalog 返回尚未覆盖的精确必需数据库子集。page 证据由调用方主动筛选，因此该
+// 策略无法保留或复制敏感 page buffer。
 func MissingCatalog(catalog catalogmodel.Catalog, existing map[string]string) (catalogmodel.Catalog, map[string]bool) {
 	return catalogmodel.MissingRequired(catalog, existing)
 }

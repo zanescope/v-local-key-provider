@@ -28,9 +28,8 @@ func delegateAcquisitionDaemonToPlatformHelper(endpointPath, clientPath string) 
 	if err != nil {
 		return true, err
 	}
-	// The helper validates this launcher version against its own embedded version
-	// before it writes an endpoint. This prevents a signed but stale sibling from
-	// serving a newly installed Provider.
+	// helper 在写入 endpoint 前，会把该 launcher 版本与自身嵌入版本核对，防止已签名但
+	// 过期的配套程序为新安装的 Provider 提供服务。
 	args := []string{helper, "daemon", "serve-helper", endpointPath, launcher, clientPath, version}
 	return true, syscall.Exec(helper, args, darwinCleanEnvironment())
 }

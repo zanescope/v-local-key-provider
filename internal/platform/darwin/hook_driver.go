@@ -48,8 +48,8 @@ func (buffer *hookOutputBuffer) zero() {
 	buffer.data = nil
 }
 
-// RunWatchdog is the internal subprocess entry. The parent keeps descriptor 3
-// open for the acquisition lifetime; EOF terminates LLDB and its process group.
+// RunWatchdog 是内部子进程入口。父进程会在整个采集生命周期保持 descriptor 3 开启；
+// EOF 会终止 LLDB 及其 process group。
 func (driver *HookDriver) RunWatchdog(args []string) error {
 	if len(args) != 3 && len(args) != 5 {
 		return errors.New("invalid hook watchdog arguments")

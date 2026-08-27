@@ -1,5 +1,4 @@
-// Package releaseevidence validates content-addressed live-regression evidence
-// and its external release promotion manifest.
+// Package releaseevidence 验证内容寻址的真机回归证据及其外部 release promotion manifest。
 package releaseevidence
 
 import (
@@ -74,9 +73,8 @@ type EvidenceArtifact struct {
 	ValidatedCipherProfiles      []string `json:"validated_cipher_profiles"`
 }
 
-// RegistryEntry is the release-evidence projection of one runtime registry
-// entry. The command layer supplies only entries already eligible under its
-// platform and profile policy.
+// RegistryEntry 是一条 runtime registry 记录在 release evidence 中的投影。命令层只提供
+// 已满足其平台和 profile 策略的条目。
 type RegistryEntry struct {
 	Platform                        string
 	Architecture                    string
@@ -204,7 +202,7 @@ func ReadEvidenceFile(root, digest, providerVersion string) (EvidenceArtifact, e
 	if err := decodeStrict(payload, &evidence); err != nil {
 		return EvidenceArtifact{}, err
 	}
-	if evidence.SchemaVersion != 2 || evidence.ProviderVersion != providerVersion ||
+	if evidence.SchemaVersion != 1 || evidence.ProviderVersion != providerVersion ||
 		!ValidSourceCommit(evidence.CandidateSourceCommit) ||
 		!ValidRunID(evidence.CandidateWorkflowRunID) ||
 		evidence.CandidateAttestationWorkflow != CandidateAttestationWorkflow ||

@@ -89,7 +89,7 @@ func observedProcessPaths(pid uint32, handles []windows.Handle, remaining workbu
 	if err != nil {
 		return nil
 	}
-	defer windows.CloseHandle(process) //nolint:errcheck -- best-effort read-only binding cleanup
+	defer windows.CloseHandle(process) //nolint:errcheck -- 尽力清理只读 binding
 	paths := make([]string, 0, 16)
 	seen := map[string]bool{}
 	for _, source := range handles {

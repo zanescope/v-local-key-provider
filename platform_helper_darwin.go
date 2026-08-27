@@ -87,9 +87,8 @@ func darwinHelperExecutableWithStatus() (string, string) {
 }
 
 func darwinHelperMode() string {
-	// The AppleScript compatibility path executes the companion as root without
-	// a privilege-separated service boundary. Signed releases therefore use
-	// only the ordinary, same-user companion until such a service exists.
+	// AppleScript 兼容路径会以 root 身份执行 companion，却没有权限分离的服务边界。因此
+	// 在该服务实现前，签名 release 只使用普通的同用户 companion。
 	if releaseBuild() {
 		return "direct"
 	}

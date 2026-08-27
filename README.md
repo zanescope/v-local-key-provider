@@ -155,8 +155,8 @@ v-local-cli setup --allow-key-access --storage keychain
 ## 候选来源
 
 - 数据库：只读扫描微信进程中的候选对象，并用本地 SQLCipher 首页筛选。
-- 图片：优先从 `kvcomm` 的 statistic 文件名提取 code，与规范化的 wxid 离线推导 AES/XOR，再用 V2 DAT 头块和 XOR 样本的共识筛选。
-- 只有在 `kvcomm` 路径不可用时，才尝试从进程内存中寻找可由 V2 头块验证的 AES 候选。
+- 图片：优先从 `kvcomm` 的 statistic 文件名提取 code，与规范化的 wxid 离线推导账号 AES/XOR，再用 V2 DAT 头块和 XOR 样本的共识筛选。V1 DAT 使用内置固定 AES key，不是账号 AES 的证据源；V3 DAT 只提供整文件 XOR 证据。
+- 只有在 `kvcomm` 路径不可用时，才尝试从进程内存中寻找可由 V2 头块验证的账号 AES 候选。
 
 macOS 进程发现先使用 `/bin/ps`；当宿主环境拒绝读取进程列表时，回退到
 `launchctl print gui/<uid>`，再查询 `application.com.tencent.xinWeChat...` 应用服务详情。

@@ -30,9 +30,8 @@ type ScanResult struct {
 	Opened  bool
 }
 
-// NativeDriver owns process discovery, evidence collection, task-port
-// lifecycle and Mach memory reads. The platform pipeline consumes only this
-// seam, which is fakeable on non-Darwin test runners.
+// NativeDriver 持有进程发现、证据收集、task-port 生命周期和 Mach 内存读取。平台 pipeline
+// 只使用此边界，因此可在非 Darwin 测试 runner 上替换为 fake。
 type NativeDriver interface {
 	ListProcesses() ([]Process, string, error)
 	CollectEvidence(Process) BinaryEvidence

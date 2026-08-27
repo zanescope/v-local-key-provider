@@ -1,8 +1,7 @@
 package diagnostics
 
-// Diagnostics is the single wire-schema source for acquisition evidence. The
-// platform and session packages may populate or merge fields, but must not
-// define parallel DTOs.
+// Diagnostics 是采集证据唯一的 wire-schema 来源。platform 和 session package 可以填充
+// 或合并字段，但不得定义平行 DTO。
 type Diagnostics struct {
 	ResultCode                    string           `json:"result_code"`
 	WorkflowStatus                string           `json:"workflow_status"`
@@ -110,8 +109,8 @@ type Diagnostics struct {
 	ProcessDiscoveryMethod        string           `json:"process_discovery_method,omitempty"`
 	ScannedBytes                  uint64           `json:"scanned_bytes"`
 	ScanLimited                   bool             `json:"scan_limited"`
-	// BudgetExhausted means the provider returned verified partial work before
-	// its deadline; database_keys may therefore be incomplete.
+	// BudgetExhausted 表示 Provider 在 deadline 前返回了经验证的部分结果，因此
+	// database_keys 可能不完整。
 	BudgetExhausted bool  `json:"budget_exhausted"`
 	ElapsedMS       int64 `json:"elapsed_ms"`
 }
@@ -133,8 +132,8 @@ func CanonicalScopes(scopes []string) []string {
 	return result
 }
 
-// New establishes collection/map invariants shared by every platform. Use
-// NewWithPlatformDefaults when composition-owned platform facts are available.
+// New 建立所有平台共享的 collection/map invariant。存在由 composition 持有的平台事实时，
+// 使用 NewWithPlatformDefaults。
 func New(platform string, scopes []string, securityPostureStatus string) Diagnostics {
 	return Diagnostics{
 		Platform: platform, RequestedScopes: CanonicalScopes(scopes),

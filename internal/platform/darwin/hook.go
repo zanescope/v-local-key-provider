@@ -16,8 +16,8 @@ type CommandRunner func(context.Context, *exec.Cmd) error
 
 type AppendSensitiveBytesFunc func([]byte, []byte, int) ([]byte, bool)
 
-// HookRuntime contains only process-bound mechanisms. Hook selection,
-// identity revalidation, capture validation and lifecycle are package-owned.
+// HookRuntime 只包含进程绑定机制。hook 选择、身份重新验证、捕获验证和生命周期均由
+// package 持有。
 type HookRuntime struct {
 	Native           NativeDriver
 	Evidence         *EvidenceCollector
