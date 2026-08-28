@@ -150,6 +150,7 @@ jobs:
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_CONFIG_CIPHER_STATUS: ${{ inputs.expected_config_cipher_status }}
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_TARGET_BINDING: ${{ inputs.expected_target_binding }}
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_STABLE: true
+          V_LOCAL_KEY_PROVIDER_LIVE_DEADLINE_MS: 180000
           V_LOCAL_KEY_PROVIDER_LIVE_EVIDENCE_PATH: ${{ github.workspace }}/build/live/evidence.json
           V_LOCAL_KEY_PROVIDER_LIVE_SCOPES: database,media
         run: |

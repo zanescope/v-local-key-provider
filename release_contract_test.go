@@ -151,6 +151,7 @@ func TestRegressionMatrixKeepsAutomatedAndLiveBoundaries(t *testing.T) {
 		"I_HAVE_EXPLICIT_AUTHORIZATION", "V_LOCAL_KEY_PROVIDER_LIVE_SCOPES: database,media",
 		"V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_DATABASE_COVERAGE",
 		"V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_CONFIG_CIPHER_STATUS",
+		"V_LOCAL_KEY_PROVIDER_LIVE_DEADLINE_MS: 180000",
 		"V_LOCAL_KEY_PROVIDER_LIVE_EVIDENCE_PATH",
 		"actions/upload-artifact@", "go test -tags=live_regression",
 	)

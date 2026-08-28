@@ -102,7 +102,8 @@ Windows x64 与 Windows ARM64 必须分别保存证据；交叉编译不能替�
 当 `live-regression.yml` 尚未进入默认分支、因而没有可直接 dispatch 的 workflow ID 时，只能通过
 默认分支已经注册的 `Audit gates` 的 `live_regression_request` 调用同一 reusable workflow。该 JSON
 只允许携带候选来源、预期枚举和专用 runner label，不得携带账号或数据库路径。
-工作流必须显式设置预期 registry、`Config.Cipher`、route、架构和账号绑定状态，并上传
+工作流必须显式设置预期 registry、`Config.Cipher`、route、架构和账号绑定状态。正式入口使用
+180 秒总 deadline；逐阶段窗口、每进程字节上限和总扫描上限仍由 Provider 保持不变。工作流上传
 `build/live/evidence.json`。工作流固定请求 `database,media`，两类 coverage 都必须为 complete。
 该文件只含版本、摘要、稳定枚举、计数和耗时，并显式声明 secret、路径、账号身份和聊天内容
 均未包含；不得含账号路径、数据库路径、进程内存、候选或密钥。
