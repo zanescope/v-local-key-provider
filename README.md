@@ -25,7 +25,7 @@ promotion 以内容摘要绑定。候选按进程实例和阶段隔离，只有�
 amd64 目标；该目标如实标记为 `Config.Cipher` 已审核但无可用结构，并只授权精确身份绑定的
 memory fallback。其他 fingerprint 和 Windows ARM64 均不会继承这项能力。
 
-正式发行还受一层独立门禁约束：live evidence 中的 `provider_binary_sha256`（macOS 还包括 helper 摘要）必须与 GitHub attestation 验真的 `Release candidate` 完全一致。内容寻址 evidence 摘要保存在不参与候选编译的 `compatibility-evidence/promotions/<release-tag>.json`，从而消除原先的自引用哈希环；签名构建会校验 promotion、候选来源提交与受限源码 diff，并把 promotion 摘要注入发行二进制。当前只有本机 qualification-only evidence，没有正式 attestation、live evidence 和 promotion，因此正式 release 继续按真实能力 fail closed。
+正式发行还受一层独立门禁约束：live evidence 中的 `provider_binary_sha256`（macOS 还包括 helper 摘要）必须与 GitHub attestation 验真的 `Release candidate` 完全一致。内容寻址 evidence 摘要保存在不参与候选编译的 `compatibility-evidence/promotions/<release-tag>.json`，从而消除原先的自引用哈希环；签名构建会校验 promotion、候选来源提交与受限源码 diff，并把 promotion 摘要注入发行二进制。仓库已有一个内容寻址的 Windows amd64 正式 live evidence，但 promotion 和其他正式发行条件仍未完成，因此 signed release 继续按真实能力 fail closed；`-dev.N` early-access 则明确使用 candidate 身份，不冒充这条正式门禁。
 
 macOS 的自动路径仍然受微信版本影响。4.1.x 的数据库密钥通常只在 CommonCrypto 调用的瞬间出现在寄存器中，开发构建可用机器验证后的通用符号路径做受控试验；签名发行构建只允许命中带内容寻址真机证据的精确 registry 条目。无论走动态断点还是静态扫描，候选都必须通过数据库首页验证，Provider 不会把零结果报成成功。
 
@@ -70,13 +70,19 @@ Provider 会读取**正在运行的微信进程的架构**并自动选择对应�
 
 ## 安装
 
-正式发布后的安装入口为：
+未签名 early-access 发布后使用显式的 `next` 通道：
+
+```sh
+npx @zanescope/v-local-key-provider@next install
+```
+
+该通道安装 `buildMode=candidate` 资产并保持未签名状态声明。正式签名发布完成后的入口才是：
 
 ```sh
 npx @zanescope/v-local-key-provider@latest install
 ```
 
-npm 包只负责下载和校验对应的 Go 二进制，不包含 Provider 的实现源码。它把正式资产安装到当前用户固定目录：Windows 为 `%LOCALAPPDATA%\v-local\key-provider\windows-<arch>\v-local-key-provider.exe`，macOS 为 `~/Library/Application Support/v-local/key-provider/darwin-<arch>/v-local-key-provider`；macOS helper 以固定同级文件名安装。每次启动都会复核发布 SHA-256，发行构建还会在运行时验证固定路径、文件身份和平台签名。用户不需要单独运行 helper、传递路径或处理中间候选。当前仓库尚未取得四架构真机 evidence，也未创建正式 Release，因此包不会提前发布。候选件、promotion 与正式签名发布的操作说明见 [RELEASING.md](RELEASING.md)。
+npm 包只负责下载和校验对应的 Go 二进制，不包含 Provider 的实现源码。它把资产安装到当前用户固定目录：Windows 为 `%LOCALAPPDATA%\v-local\key-provider\windows-<arch>\v-local-key-provider.exe`，macOS 为 `~/Library/Application Support/v-local/key-provider/darwin-<arch>/v-local-key-provider`；macOS helper 以固定同级文件名安装。每次安装都会复核发布 SHA-256；signed release 还会在运行时验证固定路径、文件身份和平台签名。early-access 只有摘要与 GitHub 来源证明，不具备平台签名信任，也不会发布到 `latest`。候选件、unsigned prerelease、promotion 与正式签名发布的操作说明见 [RELEASING.md](RELEASING.md)。
 
 仓库开发测试可以用 `V_LOCAL_KEY_PROVIDER_BINARY_PATH`（以及 macOS 的 `V_LOCAL_KEY_PROVIDER_HELPER_BINARY_PATH`）指向本地构建件，但必须同时设置 `V_LOCAL_KEY_PROVIDER_DEVELOPMENT=1` 和 `V_LOCAL_KEY_PROVIDER_ALLOW_UNVERIFIED_LOCAL_BINARY=1`。路径、开发态和绕过开关缺一不可；正式 CLI 仍会拒绝未签名替代文件。它们不得写入普通用户配置或正式发布流程。
 
