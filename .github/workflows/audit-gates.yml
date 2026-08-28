@@ -4,12 +4,21 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      live_regression_request:
+        description: Optional non-private JSON request for the reusable live regression workflow
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
+  actions: read
+  attestations: read
 
 jobs:
   go-provider:
+    if: inputs.live_regression_request == ''
     name: Go Provider / ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
@@ -45,6 +54,7 @@ jobs:
           go build -trimpath -o "$env:RUNNER_TEMP/v-local-key-provider-windows-arm64.exe" ./cmd/v-local-key-provider
 
   race-and-fuzz:
+    if: inputs.live_regression_request == ''
     name: 竞态检查与解析器模糊烟测
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -73,6 +83,7 @@ jobs:
           go test -run=^$ -fuzz=FuzzInferPrefixXOR -fuzztime=750000x -parallel=4 .
 
   vulnerability-scan:
+    if: inputs.live_regression_request == ''
     name: 依赖漏洞扫描
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -94,6 +105,7 @@ jobs:
           "$(go env GOPATH)/bin/govulncheck" ./...
 
   npm-wrapper:
+    if: inputs.live_regression_request == ''
     name: npm wrapper
     runs-on: windows-latest
     timeout-minutes: 10
@@ -108,3 +120,17 @@ jobs:
       - name: 检查发布内容
         working-directory: npm
         run: npm pack --dry-run
+
+  live-regression:
+    name: Live regression dispatcher
+    if: github.event_name == 'workflow_dispatch' && inputs.live_regression_request != ''
+    uses: ./.github/workflows/live-regression.yml
+    with:
+      candidate_run_id: ${{ fromJSON(inputs.live_regression_request).candidate_run_id }}
+      candidate_source_commit: ${{ fromJSON(inputs.live_regression_request).candidate_source_commit }}
+      runner_label: ${{ fromJSON(inputs.live_regression_request).runner_label }}
+      expected_route: ${{ fromJSON(inputs.live_regression_request).expected_route }}
+      expected_config_cipher_status: ${{ fromJSON(inputs.live_regression_request).expected_config_cipher_status }}
+      expected_target_binding: ${{ fromJSON(inputs.live_regression_request).expected_target_binding }}
+      expected_process_arch: ${{ fromJSON(inputs.live_regression_request).expected_process_arch }}
+      confirm_authorized_data: ${{ fromJSON(inputs.live_regression_request).confirm_authorized_data }}

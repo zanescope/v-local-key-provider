@@ -1,6 +1,33 @@
 name: Live regression
 
 on:
+  workflow_call:
+    inputs:
+      candidate_run_id:
+        required: true
+        type: string
+      candidate_source_commit:
+        required: true
+        type: string
+      runner_label:
+        required: true
+        type: string
+      expected_route:
+        required: true
+        type: string
+      expected_config_cipher_status:
+        required: true
+        type: string
+      expected_target_binding:
+        required: false
+        default: path_verified
+        type: string
+      expected_process_arch:
+        required: true
+        type: string
+      confirm_authorized_data:
+        required: true
+        type: boolean
   workflow_dispatch:
     inputs:
       candidate_run_id:
@@ -15,24 +42,9 @@ on:
         description: Dedicated authorized self-hosted runner label
         required: true
         type: string
-      expected_result:
-        description: Expected result_code for the prepared device state
-        required: true
-        default: complete
-        type: string
-      expected_coverage:
-        description: Expected database coverage_status
-        required: true
-        default: complete
-        type: string
       expected_route:
         description: Expected route_selected
         required: true
-        type: string
-      expected_registry_status:
-        description: Expected compatibility_registry_status for release evidence
-        required: true
-        default: registered_supported
         type: string
       expected_config_cipher_status:
         description: Expected Windows config_cipher_route_status (ignored on macOS)
@@ -49,10 +61,6 @@ on:
         required: true
         type: choice
         options: [amd64, arm64]
-      expected_next_action:
-        description: Optional expected next_action for a deliberately staged partial/action run
-        required: false
-        type: string
       confirm_authorized_data:
         description: Confirm this runner contains only data you are explicitly authorized to inspect
         required: true
@@ -134,12 +142,11 @@ jobs:
       - name: 运行已授权真机回归
         env:
           V_LOCAL_KEY_PROVIDER_LIVE_CONSENT: I_HAVE_EXPLICIT_AUTHORIZATION
-          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_RESULT: ${{ inputs.expected_result }}
-          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_DATABASE_COVERAGE: ${{ inputs.expected_coverage }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_RESULT: complete
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_DATABASE_COVERAGE: complete
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_ROUTE: ${{ inputs.expected_route }}
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_ARCH: ${{ inputs.expected_process_arch }}
-          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_NEXT_ACTION: ${{ inputs.expected_next_action }}
-          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_REGISTRY_STATUS: ${{ inputs.expected_registry_status }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_REGISTRY_STATUS: registered_supported
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_CONFIG_CIPHER_STATUS: ${{ inputs.expected_config_cipher_status }}
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_TARGET_BINDING: ${{ inputs.expected_target_binding }}
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_STABLE: true

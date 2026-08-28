@@ -182,6 +182,15 @@ func TestRegressionMatrixKeepsAutomatedAndLiveBoundaries(t *testing.T) {
 		"RequestedScopes", "MediaCoverageStatus", "SecretsIncluded", "PathsIncluded",
 		"AccountIdentityIncluded", "ChatContentIncluded",
 	)
+	requireReleaseContractFragments(t, ".github/workflows/audit-gates.yml",
+		"live_regression_request", "inputs.live_regression_request == ''",
+		"github.event_name == 'workflow_dispatch'", "uses: ./.github/workflows/live-regression.yml",
+		"fromJSON(inputs.live_regression_request).candidate_run_id",
+		"fromJSON(inputs.live_regression_request).confirm_authorized_data",
+	)
+	requireReleaseContractFragments(t, ".github/workflows/live-regression.yml",
+		"workflow_call:", "confirm_authorized_data:", "type: boolean",
+	)
 }
 
 func TestReleaseBuildMarkerIsExplicit(t *testing.T) {
