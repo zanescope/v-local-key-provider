@@ -34,6 +34,7 @@ func requireReleaseContractFragments(t *testing.T, path string, fragments ...str
 func TestReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *testing.T) {
 	release := requireReleaseContractFragments(t, ".github/workflows/release.yml",
 		"persist-credentials: false",
+		"!v*-dev.*",
 		"arch: [amd64, arm64]",
 		"go test ./...",
 		"go vet ./...",
@@ -79,10 +80,21 @@ func TestReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *testing.T)
 		"macos-helper.entitlements", "codesign --verify --strict", "TestReleaseCompatibilityEvidenceGate",
 		"V_LOCAL_KEY_PROVIDER_RELEASE_PROMOTION_PATH", "main.releasePromotionSHA256", "./cmd/v-local-key-provider",
 	)
-	requireReleaseContractFragments(t, ".github/workflows/release-candidate.yml",
+	candidate := requireReleaseContractFragments(t, ".github/workflows/release-candidate.yml",
 		"-Candidate", "V_LOCAL_KEY_PROVIDER_BUILD_MODE: candidate",
 		"candidate-manifest.js create", "dist/candidate-manifest.json", "actions/attest@",
+		"publish_unsigned_preview", "PUBLISH_UNSIGNED_PREVIEW", "refs/heads/main",
+		"actions/workflows/audit-gates.yml/runs?head_sha=", ".conclusion == \"success\"",
+		"gh attestation verify", "--source-digest", "gh release create", "--prerelease",
 	)
+	for _, forbidden := range []string{
+		"main.buildMode=release", "WINDOWS_SIGNING_CERTIFICATE_BASE64",
+		"MACOS_SIGNING_CERTIFICATE_BASE64", "APPLE_NOTARY_APPLE_ID", "npm stage publish",
+	} {
+		if strings.Contains(candidate, forbidden) {
+			t.Errorf("unsigned preview workflow contains signed-release operation %q", forbidden)
+		}
+	}
 	requireReleaseContractFragments(t, "runtime_trust_windows.go",
 		"WTD_REVOKE_NONE", "WTD_REVOCATION_CHECK_NONE", "WTD_CACHE_ONLY_URL_RETRIEVAL",
 		"WTHelperProvDataFromStateData", "WTHelperGetProvSignerFromChain", "WTHelperGetProvCertFromChain",
