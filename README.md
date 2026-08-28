@@ -6,10 +6,13 @@
 
 ## 支持范围
 
+首发发布目标固定为 Windows amd64、macOS amd64 和 macOS arm64。Windows ARM64 不生成候选或
+签名发布资产，npm 安装器也会明确拒绝；相关源码与隔离测试只作为未来适配准备。
+
 | 平台 | 架构 | 状态 | 说明 |
 | --- | --- | --- | --- |
 | Windows | amd64 | 实验性、可构建 | 路径与专用真机门禁已具备；当前仍为 `build_only`。 |
-| Windows | arm64 | 实验性、可构建 | 独立发布资产和真机回归入口已具备；未取得 ARM64 微信真机证据前保持 `build_only`。 |
+| Windows | arm64 | 首发不支持 | 不生成发布资产；未来必须独立完成候选、签名和原生微信真机验收。 |
 | macOS | amd64（Intel） | 历史验证、当前 `build_only` | 4.1.11 有未绑定当前候选件的历史记录；正式版须重新取得内容寻址的精确 registry 证据。 |
 | macOS | arm64（Apple Silicon） | 实验性、可构建 | 尚无合格的 Apple Silicon 真机证据，正式版保持 fail closed。 |
 | 其他平台 | 不适用 | 不支持自动获取候选密钥 | 可以继续使用调用方提供的候选文件。 |
@@ -82,7 +85,7 @@ npx @zanescope/v-local-key-provider@next install
 npx @zanescope/v-local-key-provider@latest install
 ```
 
-npm 包只负责下载和校验对应的 Go 二进制，不包含 Provider 的实现源码。它把资产安装到当前用户固定目录：Windows 为 `%LOCALAPPDATA%\v-local\key-provider\windows-<arch>\v-local-key-provider.exe`，macOS 为 `~/Library/Application Support/v-local/key-provider/darwin-<arch>/v-local-key-provider`；macOS helper 以固定同级文件名安装。每次安装都会复核发布 SHA-256；signed release 还会在运行时验证固定路径、文件身份和平台签名。early-access 只有摘要与 GitHub 来源证明，不具备平台签名信任，也不会发布到 `latest`。候选件、unsigned prerelease、promotion 与正式签名发布的操作说明见 [RELEASING.md](RELEASING.md)。
+npm 包只负责下载和校验对应的 Go 二进制，不包含 Provider 的实现源码。它把资产安装到当前用户固定目录：首发 Windows 为 `%LOCALAPPDATA%\v-local\key-provider\windows-amd64\v-local-key-provider.exe`，macOS 为 `~/Library/Application Support/v-local/key-provider/darwin-<arch>/v-local-key-provider`；macOS helper 以固定同级文件名安装。每次安装都会复核发布 SHA-256；signed release 还会在运行时验证固定路径、文件身份和平台签名。early-access 只有摘要与 GitHub 来源证明，不具备平台签名信任，也不会发布到 `latest`。候选件、unsigned prerelease、promotion 与正式签名发布的操作说明见 [RELEASING.md](RELEASING.md)。
 
 仓库开发测试可以用 `V_LOCAL_KEY_PROVIDER_BINARY_PATH`（以及 macOS 的 `V_LOCAL_KEY_PROVIDER_HELPER_BINARY_PATH`）指向本地构建件，但必须同时设置 `V_LOCAL_KEY_PROVIDER_DEVELOPMENT=1` 和 `V_LOCAL_KEY_PROVIDER_ALLOW_UNVERIFIED_LOCAL_BINARY=1`。路径、开发态和绕过开关缺一不可；正式 CLI 仍会拒绝未签名替代文件。它们不得写入普通用户配置或正式发布流程。
 
@@ -286,8 +289,6 @@ scripts/build-macos.sh arm64
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1
-# ARM64:
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Arch arm64
 ```
 
 正式 Windows 构建必须增加 `-Release -CertificateThumbprint <thumbprint>`。脚本在签名前把叶证书 SHA-256 注入二进制，签名后再核对同一身份并生成 `manifest.json`；普通构建不能据此宣称 Authenticode 已验证。

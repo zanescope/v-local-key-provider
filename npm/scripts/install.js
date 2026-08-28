@@ -15,8 +15,8 @@ const allowedHosts = new Set([
 const maxBinaryBytes = 128 * 1024 * 1024;
 
 function target(platform = process.platform, arch = process.arch) {
-  if (platform === 'win32' && (arch === 'x64' || arch === 'arm64')) {
-    const targetArch = arch === 'x64' ? 'amd64' : 'arm64';
+  if (platform === 'win32' && arch === 'x64') {
+    const targetArch = 'amd64';
     return {
       platform: 'windows', arch: targetArch,
       asset: `v-local-key-provider-windows-${targetArch}.exe`,

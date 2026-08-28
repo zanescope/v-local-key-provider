@@ -15,7 +15,7 @@
 2. 需要创建可下载版本时，设置 `publish_unsigned_preview=true`，并把确认值精确填写为
    `PUBLISH_UNSIGNED_PREVIEW`。工作流只允许从 `main` 发布与 `npm/package.json` 完全一致的
    `-dev.N` 版本。
-3. 发布作业会先通过 GitHub API 确认同一 `main` 提交存在成功的 `Audit gates`。工作流再以 `buildMode=candidate` 构建四个平台资产，生成绑定源码提交、workflow run id
+3. 发布作业会先通过 GitHub API 确认同一 `main` 提交存在成功的 `Audit gates`。工作流再以 `buildMode=candidate` 构建 Windows amd64、macOS amd64 和 macOS arm64 三个首发目标，生成绑定源码提交、workflow run id
    和 Provider/helper 摘要的 `candidate-manifest.json`，并为清单、二进制和 tgz 生成 GitHub
    artifact attestation。发布作业会重新验证摘要、tgz 内校验和与 attestation，随后创建
    明确标记为 unsigned early access 的 GitHub prerelease；已有标签或 Release 一律拒绝覆盖。
@@ -50,7 +50,7 @@ npm trust github @zanescope/v-local-key-provider --file release.yml --repo zanes
 
 ## 正式签名发布步骤
 
-1. 在 `main` 上运行 `Audit gates` 和 `Release candidate`，并选定不可变候选集合。
+1. 在 `main` 上运行 `Audit gates` 和 `Release candidate`，并选定只含三个首发目标的不可变候选集合。Windows ARM64 不进入首发候选、promotion 或签名资产。
 2. 手动触发真机回归工作流（`live-regression.yml`），明确提供候选 run id 和源码提交。真机工作流会跨 workflow 下载那一份不可变候选，复核清单中的全部摘要，并以 `gh attestation verify --signer-workflow .../release-candidate.yml` 验证来源；禁止在真机 runner 重新构建替代品。账号目录和数据库目录不得进入 GitHub input、Secret 或环境变量：Windows runner 只从 `%LOCALAPPDATA%\v-local\live-regression-private\config.json` 读取，macOS runner 只从 `~/Library/Application Support/v-local/live-regression-private/config.json` 读取。该文件必须是 schema v1、仅含 `schema_version`、`account_dir`、`db_dir`，并满足平台专用的 owner、ACL/mode 和非 reparse/symlink 校验。真机固定同时请求 database 与 media；成功输出必须是脱敏 schema v1 正式证据。失败时只允许上传 qualification-only 诊断，且 promotion 不得引用它。
 3. 以证据文件自身 SHA-256 命名并提交到 `compatibility-evidence/`。用 `node npm/scripts/candidate-manifest.js promote <candidate-manifest> compatibility-evidence/promotions/<release-tag>.json <evidence...>` 生成外部 promotion；x64、ARM64、不同目标 fingerprint 不得共用证据。
 4. `TestReleaseCompatibilityEvidenceGate` 会确认 promotion 的候选摘要、来源提交、workflow run、Provider/helper 集合、内容寻址 evidence、目标身份、route、coverage 和 profiles 与 registry 完全一致。缺失或不完整时正式签名构建仍会有意失败。

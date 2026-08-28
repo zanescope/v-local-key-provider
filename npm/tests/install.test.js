@@ -18,16 +18,10 @@ test('npm dual-use 声明随发布包持久存在', () => {
   assert.match(fs.readFileSync(path.resolve(__dirname, '..', 'DISCLOSURE'), 'utf8'), /explicit user authorization/i);
 });
 
-test('发布目标覆盖 Windows 与 macOS 双架构', () => {
+test('首发目标只覆盖 Windows amd64 与 macOS 双架构', () => {
   assert.deepStrictEqual(installer.target('win32', 'x64'), {
     platform: 'windows', arch: 'amd64',
     asset: 'v-local-key-provider-windows-amd64.exe',
-    binary: 'v-local-key-provider.exe',
-    helperAsset: null, helperBinary: null,
-  });
-  assert.deepStrictEqual(installer.target('win32', 'arm64'), {
-    platform: 'windows', arch: 'arm64',
-    asset: 'v-local-key-provider-windows-arm64.exe',
     binary: 'v-local-key-provider.exe',
     helperAsset: null, helperBinary: null,
   });
@@ -46,6 +40,7 @@ test('发布目标覆盖 Windows 与 macOS 双架构', () => {
     helperBinary: 'v-local-key-provider-helper',
   });
   assert.throws(() => installer.target('linux', 'x64'));
+  assert.throws(() => installer.target('win32', 'arm64'));
   assert.throws(() => installer.target('darwin', 'ia32'));
 });
 
@@ -135,10 +130,10 @@ test('下载重定向保留已独占打开的目标描述符', async () => {
 });
 
 test('正式安装目录固定在当前用户私有配置树且按架构隔离', () => {
-  const windows = installer.target('win32', 'arm64');
+  const windows = installer.target('win32', 'x64');
   assert.strictEqual(
     installer.installationDirectory(windows, 'C:\\Users\\tester\\AppData\\Local'),
-    path.resolve('C:\\Users\\tester\\AppData\\Local', 'v-local', 'key-provider', 'windows-arm64'),
+    path.resolve('C:\\Users\\tester\\AppData\\Local', 'v-local', 'key-provider', 'windows-amd64'),
   );
   const darwin = installer.target('darwin', 'x64');
   assert.strictEqual(

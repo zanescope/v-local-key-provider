@@ -35,7 +35,9 @@ func TestReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *testing.T)
 	release := requireReleaseContractFragments(t, ".github/workflows/release.yml",
 		"persist-credentials: false",
 		"!v*-dev.*",
-		"arch: [amd64, arm64]",
+		"arch: [amd64]",
+		"name: darwin-amd64",
+		"name: darwin-arm64",
 		"go test ./...",
 		"go vet ./...",
 		"notarytool submit",
@@ -57,7 +59,6 @@ func TestReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *testing.T)
 	)
 	for _, asset := range []string{
 		"v-local-key-provider-windows-amd64.exe",
-		"v-local-key-provider-windows-arm64.exe",
 		"v-local-key-provider-darwin-amd64",
 		"v-local-key-provider-helper-darwin-amd64",
 		"v-local-key-provider-darwin-arm64",
@@ -65,6 +66,14 @@ func TestReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *testing.T)
 	} {
 		if !strings.Contains(release, asset) {
 			t.Errorf("signed release does not bind required asset %q", asset)
+		}
+	}
+	for _, forbidden := range []string{
+		"v-local-key-provider-windows-arm64.exe",
+		"for target in windows/amd64 windows/arm64",
+	} {
+		if strings.Contains(release, forbidden) {
+			t.Errorf("signed release contains unsupported initial target %q", forbidden)
 		}
 	}
 	requireReleaseContractFragments(t, "scripts/build.ps1",
@@ -87,6 +96,11 @@ func TestReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *testing.T)
 		"actions/workflows/audit-gates.yml/runs?head_sha=", ".conclusion == \"success\"",
 		"gh attestation verify", "--source-digest", "gh release create", "--prerelease",
 	)
+	for _, forbidden := range []string{"name: windows-arm64", "v-local-key-provider-windows-arm64.exe"} {
+		if strings.Contains(candidate, forbidden) {
+			t.Errorf("unsigned preview contains unsupported initial target %q", forbidden)
+		}
+	}
 	for _, forbidden := range []string{
 		"main.buildMode=release", "WINDOWS_SIGNING_CERTIFICATE_BASE64",
 		"MACOS_SIGNING_CERTIFICATE_BASE64", "APPLE_NOTARY_APPLE_ID", "npm stage publish",

@@ -65,7 +65,7 @@ jobs:
           go test ./...
           go vet ./...
           npm --prefix npm test
-          for target in windows/amd64 windows/arm64 darwin/amd64 darwin/arm64; do
+          for target in windows/amd64 darwin/amd64 darwin/arm64; do
             platform="${target%/*}"
             arch="${target#*/}"
             V_LOCAL_KEY_PROVIDER_REQUIRE_RELEASE_EVIDENCE=1 \
@@ -97,7 +97,6 @@ jobs:
           candidate_assets=(
             candidate/dist/candidate-manifest.json
             candidate/dist/v-local-key-provider-windows-amd64.exe
-            candidate/dist/v-local-key-provider-windows-arm64.exe
             candidate/dist/v-local-key-provider-darwin-amd64
             candidate/dist/v-local-key-provider-helper-darwin-amd64
             candidate/dist/v-local-key-provider-darwin-arm64
@@ -117,7 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [amd64, arm64]
+        arch: [amd64]
     steps:
       - name: 检出源码
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -335,7 +334,6 @@ jobs:
         run: |
           expected=(
             v-local-key-provider-windows-amd64.exe
-            v-local-key-provider-windows-arm64.exe
             v-local-key-provider-darwin-amd64
             v-local-key-provider-helper-darwin-amd64
             v-local-key-provider-darwin-arm64
@@ -346,9 +344,9 @@ jobs:
             test -f "dist/${file}"
             (cd dist && sha256sum "${file}") >> dist/checksums.txt
           done
+          test -f "dist/signature-manifest-windows-amd64.json"
           for arch in amd64 arm64; do
             test -f "dist/v-local-key-provider-darwin-${arch}.dmg"
-            test -f "dist/signature-manifest-windows-${arch}.json"
             test -f "dist/signature-manifest-darwin-${arch}.json"
             test -f "dist/notary-log-darwin-${arch}.json"
           done
