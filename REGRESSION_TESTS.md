@@ -72,7 +72,7 @@
 | P3-09 | 拒绝 Shadow/SIP、hook 超时、候选冲突 | 有界停止、无进程暂停、无 secret 临时文件或日志 |
 | P3-10 | Shadow 未实现但优先级高于 SIP | Provider 返回 `shadow_route_status=unavailable_in_build`，不伪造失败；标准访问失败且 SIP 已验证时允许 `disable_sip`，见 Provider `internal/diagnostics.TestFinalizeDarwinShadowFallbackPolicy` 与 CLI `TestDisableSIPActionRequiresTerminalShadowRouteEvidence` |
 
-真机命令由工作流设置 `V_LOCAL_KEY_PROVIDER_LIVE_*` 环境变量后执行：
+真机命令由工作流设置不含私有路径的 `V_LOCAL_KEY_PROVIDER_LIVE_*` 预期值后执行。账号和数据库目录只从 runner 本机固定位置的 schema v1 私有配置读取；配置文件及其父目录必须由当前用户持有、禁止继承或普通用户访问，并且不得是 symlink、junction 或 reparse point：
 
 ```text
 go test -tags=live_regression -run '^TestMacOSLiveAcquisition$' -count=1 .
@@ -100,8 +100,9 @@ go test -tags=live_regression -run '^TestWindowsLiveAcquisition$' -count=1 .
 
 Windows x64 与 Windows ARM64 必须分别保存证据；交叉编译不能替代 ARM64 真机。
 工作流必须显式设置预期 registry、`Config.Cipher`、route、架构和账号绑定状态，并上传
-`build/live/evidence.json`。该文件只含版本、摘要、稳定枚举、计数和耗时；不得含账号路径、
-数据库路径、进程内存、候选或密钥。
+`build/live/evidence.json`。工作流固定请求 `database,media`，两类 coverage 都必须为 complete。
+该文件只含版本、摘要、稳定枚举、计数和耗时，并显式声明 secret、路径、账号身份和聊天内容
+均未包含；不得含账号路径、数据库路径、进程内存、候选或密钥。
 
 ## 发布安全
 

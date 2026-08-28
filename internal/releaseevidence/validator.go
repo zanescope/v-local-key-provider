@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
@@ -39,38 +40,83 @@ type PromotionManifest struct {
 }
 
 type EvidenceArtifact struct {
-	SchemaVersion                int      `json:"schema_version"`
-	CandidateSourceCommit        string   `json:"candidate_source_commit"`
-	CandidateWorkflowRunID       string   `json:"candidate_workflow_run_id"`
-	CandidateAttestationWorkflow string   `json:"candidate_attestation_workflow"`
-	CandidateAttestationVerified bool     `json:"candidate_attestation_verified"`
-	CandidateArtifactName        string   `json:"candidate_artifact_name"`
-	RunnerOS                     string   `json:"runner_os"`
-	RunnerArch                   string   `json:"runner_arch"`
-	ProviderVersion              string   `json:"provider_version"`
-	ProviderBinarySHA256         string   `json:"provider_binary_sha256"`
-	ProviderHelperSHA256         string   `json:"provider_helper_sha256"`
-	WeChatVersion                string   `json:"wechat_version"`
-	WeChatBuild                  string   `json:"wechat_build"`
-	TargetExecutableSHA256       string   `json:"target_executable_sha256"`
-	BinaryFingerprintStatus      string   `json:"binary_fingerprint_status"`
-	BinarySigningStatus          string   `json:"binary_signing_status"`
-	BinarySignerSHA256           string   `json:"binary_signer_sha256"`
-	BinaryProductIdentity        string   `json:"binary_product_identity"`
-	SigningTeamID                string   `json:"signing_team_id"`
-	DesignatedRequirementSHA256  string   `json:"designated_requirement_sha256"`
-	ProcessArchitecture          string   `json:"process_architecture"`
-	ProcessArchitectureStatus    string   `json:"process_architecture_status"`
-	CompatibilityRegistryStatus  string   `json:"compatibility_registry_status"`
-	ConfigCipherRouteStatus      string   `json:"config_cipher_route_status"`
-	StandardRouteStatus          string   `json:"standard_route_status"`
-	StandardRouteEvidence        []string `json:"standard_route_evidence"`
-	WindowsRouteEvidence         []string `json:"windows_route_evidence"`
-	RouteSelected                string   `json:"route_selected"`
-	TargetBindingStatus          string   `json:"target_binding_status"`
-	ResultCode                   string   `json:"result_code"`
-	DatabaseCoverageStatus       string   `json:"database_coverage_status"`
-	ValidatedCipherProfiles      []string `json:"validated_cipher_profiles"`
+	SchemaVersion                int              `json:"schema_version"`
+	QualificationOnly            *bool            `json:"qualification_only"`
+	FormalReleaseEvidence        *bool            `json:"formal_release_evidence"`
+	CandidateSourceCommit        string           `json:"candidate_source_commit"`
+	CandidateWorkflowRunID       string           `json:"candidate_workflow_run_id"`
+	CandidateAttestationWorkflow string           `json:"candidate_attestation_workflow"`
+	CandidateAttestationVerified bool             `json:"candidate_attestation_verified"`
+	PromotionVerified            *bool            `json:"promotion_verified"`
+	CandidateArtifactName        string           `json:"candidate_artifact_name"`
+	RecordedAt                   string           `json:"recorded_at"`
+	RunnerOS                     string           `json:"runner_os"`
+	RunnerArch                   string           `json:"runner_arch"`
+	ProviderVersion              string           `json:"provider_version"`
+	ProviderBinarySHA256         string           `json:"provider_binary_sha256"`
+	ProviderHelperSHA256         string           `json:"provider_helper_sha256,omitempty"`
+	WeChatVersion                string           `json:"wechat_version,omitempty"`
+	WeChatBuild                  string           `json:"wechat_build,omitempty"`
+	TargetExecutableSHA256       string           `json:"target_executable_sha256,omitempty"`
+	BinaryFingerprintStatus      string           `json:"binary_fingerprint_status"`
+	BinarySigningStatus          string           `json:"binary_signing_status"`
+	BinarySignerSHA256           string           `json:"binary_signer_sha256,omitempty"`
+	BinaryProductIdentity        string           `json:"binary_product_identity,omitempty"`
+	SigningTeamID                string           `json:"signing_team_id,omitempty"`
+	DesignatedRequirementSHA256  string           `json:"designated_requirement_sha256,omitempty"`
+	ProcessArchitecture          string           `json:"process_architecture"`
+	ProcessArchitectureStatus    string           `json:"process_architecture_status"`
+	ProcessInventoryStable       *bool            `json:"process_inventory_stable,omitempty"`
+	CompatibilityRegistryStatus  string           `json:"compatibility_registry_status"`
+	ConfigCipherRouteStatus      string           `json:"config_cipher_route_status"`
+	StandardRouteStatus          string           `json:"standard_route_status,omitempty"`
+	StandardRouteEvidence        []string         `json:"standard_route_evidence"`
+	WindowsRouteEvidence         []string         `json:"windows_route_evidence"`
+	RouteSelected                string           `json:"route_selected,omitempty"`
+	RoutesAttempted              []string         `json:"routes_attempted"`
+	TargetBindingStatus          string           `json:"target_binding_status"`
+	SessionAccountStatus         string           `json:"session_account_status"`
+	ResultCode                   string           `json:"result_code"`
+	RequestedScopes              []string         `json:"requested_scopes"`
+	DatabaseCoverageStatus       string           `json:"database_coverage_status"`
+	MediaCoverageStatus          string           `json:"media_coverage_status"`
+	DatabaseCount                int              `json:"database_count"`
+	RequiredDatabaseCount        int              `json:"required_database_count"`
+	PlaintextDatabaseCount       int              `json:"plaintext_database_count"`
+	UnreadableDatabaseCount      int              `json:"unreadable_database_count"`
+	UnstableDatabaseCount        int              `json:"unstable_database_count"`
+	TruncatedDatabaseCount       int              `json:"truncated_database_count"`
+	MatchedDatabaseCount         int              `json:"matched_database_count"`
+	MissingDatabaseCount         int              `json:"missing_database_count"`
+	ProcessCount                 int              `json:"process_count"`
+	SelectedProcessCount         int              `json:"selected_process_count"`
+	TargetBoundProcessCount      int              `json:"target_bound_process_count"`
+	OtherAccountProcessCount     int              `json:"other_account_process_count"`
+	UnknownAccountProcessCount   int              `json:"unknown_account_process_count"`
+	OpenedProcessCount           int              `json:"opened_process_count"`
+	AccessDeniedCount            int              `json:"access_denied_count"`
+	PerProcessCollectorCount     int              `json:"per_process_collector_count"`
+	CredentialProcessCount       int              `json:"credential_process_instance_count"`
+	ConfigCipherStructureCount   int              `json:"config_cipher_structure_count"`
+	ConfigCipherInvalidCount     int              `json:"config_cipher_invalid_structure_count"`
+	ConfigCipherCandidateCount   int              `json:"config_cipher_candidate_count"`
+	ConfigCipherVerifiedCount    int              `json:"config_cipher_verified_candidate_count"`
+	FallbackCandidateCount       int              `json:"fallback_candidate_count"`
+	FallbackStageCounts          map[string]int   `json:"fallback_stage_counts"`
+	StaticScanFallback           bool             `json:"static_scan_fallback"`
+	V2SampleCount                int              `json:"v2_sample_count"`
+	XORSampleCount               int              `json:"xor_sample_count"`
+	XORDistinctCandidateCount    int              `json:"xor_distinct_candidate_count"`
+	MediaAESCandidateCount       int              `json:"media_aes_candidate_count"`
+	KVCommCodeCandidateCount     int              `json:"kvcomm_code_candidate_count"`
+	KVCommVerifiedCandidateCount int              `json:"kvcomm_verified_candidate_count"`
+	MediaCandidateMethod         string           `json:"media_candidate_method,omitempty"`
+	PhaseTimingsMS               map[string]int64 `json:"phase_timings_ms"`
+	ValidatedCipherProfiles      []string         `json:"validated_cipher_profiles"`
+	SecretsIncluded              *bool            `json:"secrets_included"`
+	PathsIncluded                *bool            `json:"paths_included"`
+	AccountIdentityIncluded      *bool            `json:"account_identity_included"`
+	ChatContentIncluded          *bool            `json:"chat_content_included"`
 }
 
 // RegistryEntry 是一条 runtime registry 记录在 release evidence 中的投影。命令层只提供
@@ -186,6 +232,59 @@ func decodeStrict(payload []byte, destination any) error {
 	return nil
 }
 
+func ValidateEvidenceArtifact(evidence EvidenceArtifact, providerVersion string) error {
+	recordedAt, recordedErr := time.Parse(time.RFC3339Nano, evidence.RecordedAt)
+	if evidence.SchemaVersion != 1 || evidence.ProviderVersion != providerVersion ||
+		evidence.QualificationOnly == nil || *evidence.QualificationOnly ||
+		evidence.FormalReleaseEvidence == nil || !*evidence.FormalReleaseEvidence ||
+		!ValidSourceCommit(evidence.CandidateSourceCommit) ||
+		!ValidRunID(evidence.CandidateWorkflowRunID) ||
+		evidence.CandidateAttestationWorkflow != CandidateAttestationWorkflow ||
+		!evidence.CandidateAttestationVerified || evidence.PromotionVerified == nil || *evidence.PromotionVerified ||
+		recordedErr != nil || recordedAt.Location() != time.UTC ||
+		!ValidSHA256(evidence.ProviderBinarySHA256) || !ValidSHA256(evidence.TargetExecutableSHA256) ||
+		evidence.WeChatVersion == "" || evidence.WeChatBuild == "" ||
+		evidence.BinaryFingerprintStatus != "verified" || evidence.BinarySigningStatus != "verified" ||
+		evidence.ProcessArchitecture != evidence.RunnerArch || evidence.ProcessArchitectureStatus != "verified_running_process" ||
+		(evidence.TargetBindingStatus != "hmac_verified" && evidence.TargetBindingStatus != "path_verified") ||
+		evidence.CompatibilityRegistryStatus != "registered_supported" ||
+		evidence.RouteSelected == "" || evidence.ResultCode != "complete" ||
+		!SameProfiles(evidence.RequestedScopes, []string{"database", "media"}) ||
+		evidence.DatabaseCoverageStatus != "complete" || evidence.MediaCoverageStatus != "complete" ||
+		evidence.DatabaseCount <= 0 || evidence.RequiredDatabaseCount <= 0 ||
+		evidence.DatabaseCount != evidence.RequiredDatabaseCount+evidence.PlaintextDatabaseCount ||
+		evidence.MissingDatabaseCount != 0 || evidence.UnreadableDatabaseCount != 0 ||
+		evidence.UnstableDatabaseCount != 0 || evidence.TruncatedDatabaseCount != 0 ||
+		evidence.MatchedDatabaseCount != evidence.RequiredDatabaseCount ||
+		len(evidence.ValidatedCipherProfiles) == 0 ||
+		evidence.SecretsIncluded == nil || *evidence.SecretsIncluded ||
+		evidence.PathsIncluded == nil || *evidence.PathsIncluded ||
+		evidence.AccountIdentityIncluded == nil || *evidence.AccountIdentityIncluded ||
+		evidence.ChatContentIncluded == nil || *evidence.ChatContentIncluded {
+		return invalid("artifact does not satisfy the live evidence schema")
+	}
+	switch evidence.RunnerOS {
+	case "windows":
+		if evidence.RunnerArch != "amd64" && evidence.RunnerArch != "arm64" ||
+			evidence.CandidateArtifactName != CandidateProviderAsset("windows", evidence.RunnerArch) ||
+			evidence.ProviderHelperSHA256 != "" || evidence.ProcessInventoryStable == nil || !*evidence.ProcessInventoryStable ||
+			!ValidSHA256(evidence.BinarySignerSHA256) ||
+			(evidence.BinaryProductIdentity != "weixin.exe" && evidence.BinaryProductIdentity != "wechat.exe") {
+			return invalid("artifact does not satisfy the Windows live identity schema")
+		}
+	case "darwin":
+		if evidence.RunnerArch != "amd64" && evidence.RunnerArch != "arm64" ||
+			evidence.CandidateArtifactName != CandidateProviderAsset("darwin", evidence.RunnerArch) ||
+			!ValidSHA256(evidence.ProviderHelperSHA256) || evidence.SigningTeamID == "" ||
+			!ValidSHA256(evidence.DesignatedRequirementSHA256) {
+			return invalid("artifact does not satisfy the Darwin live identity schema")
+		}
+	default:
+		return invalid("artifact runner platform is unsupported")
+	}
+	return nil
+}
+
 func ReadEvidenceFile(root, digest, providerVersion string) (EvidenceArtifact, error) {
 	if !ValidSHA256(digest) {
 		return EvidenceArtifact{}, invalid("digest is not a canonical SHA-256")
@@ -202,18 +301,8 @@ func ReadEvidenceFile(root, digest, providerVersion string) (EvidenceArtifact, e
 	if err := decodeStrict(payload, &evidence); err != nil {
 		return EvidenceArtifact{}, err
 	}
-	if evidence.SchemaVersion != 1 || evidence.ProviderVersion != providerVersion ||
-		!ValidSourceCommit(evidence.CandidateSourceCommit) ||
-		!ValidRunID(evidence.CandidateWorkflowRunID) ||
-		evidence.CandidateAttestationWorkflow != CandidateAttestationWorkflow ||
-		!evidence.CandidateAttestationVerified || evidence.CandidateArtifactName == "" ||
-		!ValidSHA256(evidence.ProviderBinarySHA256) ||
-		evidence.BinaryFingerprintStatus != "verified" || evidence.BinarySigningStatus != "verified" ||
-		evidence.ProcessArchitectureStatus != "verified_running_process" ||
-		evidence.CompatibilityRegistryStatus != "registered_supported" ||
-		evidence.RouteSelected == "" || evidence.ResultCode != "complete" ||
-		evidence.DatabaseCoverageStatus != "complete" || len(evidence.ValidatedCipherProfiles) == 0 {
-		return EvidenceArtifact{}, invalid("artifact does not satisfy the live evidence schema")
+	if err := ValidateEvidenceArtifact(evidence, providerVersion); err != nil {
+		return EvidenceArtifact{}, err
 	}
 	return evidence, nil
 }
@@ -363,6 +452,16 @@ func evidenceMatchesRegistryEntry(evidence EvidenceArtifact, entry RegistryEntry
 	}
 	switch entry.Platform {
 	case "windows":
+		if evidence.RouteSelected == "windows_memory_fallback" &&
+			(!evidence.StaticScanFallback || len(evidence.FallbackStageCounts) == 0 ||
+				evidence.PerProcessCollectorCount == 0 || evidence.FallbackCandidateCount == 0) {
+			return false
+		}
+		if entry.RequiredConfigCipherRouteStatus == "reviewed_no_structure" &&
+			(evidence.ConfigCipherStructureCount != 0 || evidence.ConfigCipherInvalidCount != 0 ||
+				evidence.ConfigCipherCandidateCount != 0 || evidence.ConfigCipherVerifiedCount != 0) {
+			return false
+		}
 		return evidence.BinarySignerSHA256 == entry.BinarySignerSHA256 &&
 			evidence.BinaryProductIdentity == entry.BinaryProductIdentity &&
 			evidence.ConfigCipherRouteStatus == entry.RequiredConfigCipherRouteStatus &&

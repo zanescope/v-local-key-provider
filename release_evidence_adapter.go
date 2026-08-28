@@ -32,6 +32,10 @@ func sameReleaseProfiles(actual, expected []string) bool {
 	return releaseevidence.SameProfiles(actual, expected)
 }
 
+func validateReleaseEvidenceArtifact(value releaseEvidenceArtifact) error {
+	return releaseevidence.ValidateEvidenceArtifact(value, version)
+}
+
 func releaseEvidenceRegistryEntries(platform, architecture string) []releaseevidence.RegistryEntry {
 	entries := []releaseevidence.RegistryEntry{}
 	switch platform {

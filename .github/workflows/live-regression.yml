@@ -44,11 +44,6 @@ on:
         required: false
         default: path_verified
         type: string
-      expect_process_stable:
-        description: Require the Windows target process inventory to remain unchanged
-        required: true
-        default: true
-        type: boolean
       expected_process_arch:
         description: Expected target process architecture (amd64 or arm64)
         required: true
@@ -57,11 +52,6 @@ on:
       expected_next_action:
         description: Optional expected next_action for a deliberately staged partial/action run
         required: false
-        type: string
-      scopes:
-        description: Comma-separated scopes
-        required: true
-        default: database
         type: string
       confirm_authorized_data:
         description: Confirm this runner contains only data you are explicitly authorized to inspect
@@ -144,8 +134,6 @@ jobs:
       - name: 运行已授权真机回归
         env:
           V_LOCAL_KEY_PROVIDER_LIVE_CONSENT: I_HAVE_EXPLICIT_AUTHORIZATION
-          V_LOCAL_KEY_PROVIDER_LIVE_ACCOUNT_DIR: ${{ secrets.LIVE_ACCOUNT_DIR }}
-          V_LOCAL_KEY_PROVIDER_LIVE_DB_DIR: ${{ secrets.LIVE_DB_DIR }}
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_RESULT: ${{ inputs.expected_result }}
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_DATABASE_COVERAGE: ${{ inputs.expected_coverage }}
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_ROUTE: ${{ inputs.expected_route }}
@@ -154,10 +142,12 @@ jobs:
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_REGISTRY_STATUS: ${{ inputs.expected_registry_status }}
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_CONFIG_CIPHER_STATUS: ${{ inputs.expected_config_cipher_status }}
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_TARGET_BINDING: ${{ inputs.expected_target_binding }}
-          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_STABLE: ${{ inputs.expect_process_stable }}
+          V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_STABLE: true
           V_LOCAL_KEY_PROVIDER_LIVE_EVIDENCE_PATH: ${{ github.workspace }}/build/live/evidence.json
-          V_LOCAL_KEY_PROVIDER_LIVE_SCOPES: ${{ inputs.scopes }}
-        run: go test -tags=live_regression -run '^Test(MacOS|Windows)LiveAcquisition$' -count=1 .
+          V_LOCAL_KEY_PROVIDER_LIVE_SCOPES: database,media
+        run: |
+          node -e "require('fs').rmSync('build/live/evidence.json', { force: true })"
+          go test -tags=live_regression -run '^Test(MacOS|Windows)LiveAcquisition$' -count=1 .
       - name: 上传脱敏真机证据
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

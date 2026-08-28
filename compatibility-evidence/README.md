@@ -12,6 +12,12 @@ run again and verifies each required asset with both `--signer-workflow` and
 `--source-digest`; a committed `candidate_attestation_verified=true` field is
 not sufficient by itself.
 
+Schema v1 release evidence must request both `database` and `media`, report both
+coverage states as `complete`, and explicitly record that secrets, paths, account
+identity, and chat content are absent. Runner-local account and database paths are
+loaded only from the platform-protected private config described in `RELEASING.md`;
+they must never be supplied through GitHub workflow inputs, Secrets, or artifacts.
+
 An uploaded CI artifact alone is not release authorization. The live workflow
 must download the immutable `Release candidate` artifact by run id, verify every
 asset against `candidate-manifest.json`, and run `gh attestation verify` against

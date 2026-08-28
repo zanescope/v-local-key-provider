@@ -148,7 +148,7 @@ func TestRegressionMatrixKeepsAutomatedAndLiveBoundaries(t *testing.T) {
 		"candidate_run_id", "candidate_source_commit", "actions: read", "attestations: read",
 		"actions/download-artifact@", "run-id: ${{ inputs.candidate_run_id }}",
 		"candidate-manifest.js verify", "gh attestation verify", "--signer-workflow", "--source-digest",
-		"I_HAVE_EXPLICIT_AUTHORIZATION", "secrets.LIVE_ACCOUNT_DIR", "secrets.LIVE_DB_DIR",
+		"I_HAVE_EXPLICIT_AUTHORIZATION", "V_LOCAL_KEY_PROVIDER_LIVE_SCOPES: database,media",
 		"V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_DATABASE_COVERAGE",
 		"V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_CONFIG_CIPHER_STATUS",
 		"V_LOCAL_KEY_PROVIDER_LIVE_EVIDENCE_PATH",
@@ -159,11 +159,29 @@ func TestRegressionMatrixKeepsAutomatedAndLiveBoundaries(t *testing.T) {
 			t.Errorf("live acquisition workflow must not have automatic trigger %q", automaticTrigger)
 		}
 	}
+	for _, forbidden := range []string{"secrets.LIVE_ACCOUNT_DIR", "secrets.LIVE_DB_DIR", "V_LOCAL_KEY_PROVIDER_LIVE_ACCOUNT_DIR", "V_LOCAL_KEY_PROVIDER_LIVE_DB_DIR"} {
+		if strings.Contains(workflow, forbidden) {
+			t.Errorf("live workflow exports a private data path through GitHub: %q", forbidden)
+		}
+	}
 	for _, forbidden := range []string{"go build -trimpath", "scripts/build-macos.sh"} {
 		if strings.Contains(workflow, forbidden) {
 			t.Errorf("live acquisition workflow rebuilds instead of executing the attested candidate: %q", forbidden)
 		}
 	}
+	requireReleaseContractFragments(t, "live_private_config_test.go",
+		"livePrivateConfigSchema", "schema_version", "account_dir", "db_dir",
+		"decoder.Token", "livePrivateConfigMaxBytes", "filepath.IsAbs", "os.ModeSymlink",
+	)
+	requireReleaseContractFragments(t, "live_private_config_windows_test.go",
+		"FOLDERID_LocalAppData", "FILE_FLAG_OPEN_REPARSE_POINT", "SE_DACL_PROTECTED",
+		"OWNER_SECURITY_INFORMATION", "DACL_SECURITY_INFORMATION", "WinLocalSystemSid",
+	)
+	requireReleaseContractFragments(t, "live_regression_test.go",
+		"evidence := releaseEvidenceArtifact{", "QualificationOnly", "FormalReleaseEvidence",
+		"RequestedScopes", "MediaCoverageStatus", "SecretsIncluded", "PathsIncluded",
+		"AccountIdentityIncluded", "ChatContentIncluded",
+	)
 }
 
 func TestReleaseBuildMarkerIsExplicit(t *testing.T) {
@@ -249,6 +267,8 @@ func TestReleaseProfilesMustMatchExactly(t *testing.T) {
 	}
 }
 
+func releaseEvidenceBoolean(value bool) *bool { return &value }
+
 func writeReleaseFixtureArtifact(t *testing.T, root string, value releaseEvidenceArtifact) (string, []byte, string) {
 	t.Helper()
 	payload, err := json.Marshal(value)
@@ -300,18 +320,25 @@ func TestReleaseEvidenceArtifactIsContentAddressedAndExternallyPromoted(t *testi
 	evidence := completeWindowsRouteEvidence()
 	entry := fixtureWindowsRegistryEntry(evidence)
 	artifact := releaseEvidenceArtifact{
-		SchemaVersion: 1, CandidateSourceCommit: strings.Repeat("a", 40), CandidateWorkflowRunID: "12345",
+		SchemaVersion: 1, QualificationOnly: releaseEvidenceBoolean(false), FormalReleaseEvidence: releaseEvidenceBoolean(true),
+		CandidateSourceCommit: strings.Repeat("a", 40), CandidateWorkflowRunID: "12345",
 		CandidateAttestationWorkflow: releaseCandidateAttestationWorkflow, CandidateAttestationVerified: true,
+		PromotionVerified: releaseEvidenceBoolean(false), RecordedAt: "2026-01-01T00:00:00Z",
 		CandidateArtifactName: releaseCandidateProviderAsset("windows", "amd64"),
 		RunnerOS:              "windows", RunnerArch: "amd64", ProviderVersion: version,
 		ProviderBinarySHA256: strings.Repeat("e", 64), WeChatVersion: entry.Version, WeChatBuild: entry.Build,
 		TargetExecutableSHA256: entry.ExecutableSHA256, BinaryFingerprintStatus: "verified", BinarySigningStatus: "verified",
 		BinarySignerSHA256: entry.BinarySignerSHA256, BinaryProductIdentity: entry.ProductIdentity,
 		ProcessArchitecture: entry.ProcessArchitecture, ProcessArchitectureStatus: "verified_running_process",
+		ProcessInventoryStable:      releaseEvidenceBoolean(true),
 		CompatibilityRegistryStatus: "registered_supported", ConfigCipherRouteStatus: windowsroute.ConfigCipherSucceeded,
 		WindowsRouteEvidence: []string{"registry_candidate_entry", "registry_exact_match"},
 		RouteSelected:        "windows_config_cipher", TargetBindingStatus: "path_verified",
-		ResultCode: "complete", DatabaseCoverageStatus: "complete", ValidatedCipherProfiles: []string{defaultProfileID},
+		ResultCode: "complete", RequestedScopes: []string{"database", "media"},
+		DatabaseCoverageStatus: "complete", MediaCoverageStatus: "complete",
+		DatabaseCount: 1, RequiredDatabaseCount: 1, MatchedDatabaseCount: 1, ValidatedCipherProfiles: []string{defaultProfileID},
+		SecretsIncluded: releaseEvidenceBoolean(false), PathsIncluded: releaseEvidenceBoolean(false),
+		AccountIdentityIncluded: releaseEvidenceBoolean(false), ChatContentIncluded: releaseEvidenceBoolean(false),
 	}
 	root := t.TempDir()
 	digest, payload, path := writeReleaseFixtureArtifact(t, root, artifact)
@@ -342,8 +369,19 @@ func TestReleaseEvidenceArtifactIsContentAddressedAndExternallyPromoted(t *testi
 		{name: "source commit", mutate: func(value *releaseEvidenceArtifact) { value.CandidateSourceCommit = strings.Repeat("b", 40) }},
 		{name: "workflow run", mutate: func(value *releaseEvidenceArtifact) { value.CandidateWorkflowRunID = "54321" }},
 		{name: "attestation", mutate: func(value *releaseEvidenceArtifact) { value.CandidateAttestationVerified = false }},
+		{name: "qualification only", mutate: func(value *releaseEvidenceArtifact) { value.QualificationOnly = releaseEvidenceBoolean(true) }},
+		{name: "formal evidence", mutate: func(value *releaseEvidenceArtifact) { value.FormalReleaseEvidence = releaseEvidenceBoolean(false) }},
+		{name: "premature promotion", mutate: func(value *releaseEvidenceArtifact) { value.PromotionVerified = releaseEvidenceBoolean(true) }},
+		{name: "process inventory", mutate: func(value *releaseEvidenceArtifact) { value.ProcessInventoryStable = releaseEvidenceBoolean(false) }},
 		{name: "route", mutate: func(value *releaseEvidenceArtifact) { value.RouteSelected = "windows_memory_fallback" }},
 		{name: "config status", mutate: func(value *releaseEvidenceArtifact) { value.ConfigCipherRouteStatus = windowsroute.ConfigCipherPartial }},
+		{name: "database scopes", mutate: func(value *releaseEvidenceArtifact) { value.RequestedScopes = []string{"database"} }},
+		{name: "media coverage", mutate: func(value *releaseEvidenceArtifact) { value.MediaCoverageStatus = "none" }},
+		{name: "database counts", mutate: func(value *releaseEvidenceArtifact) { value.MatchedDatabaseCount = 0 }},
+		{name: "secret redaction", mutate: func(value *releaseEvidenceArtifact) { value.SecretsIncluded = releaseEvidenceBoolean(true) }},
+		{name: "path redaction", mutate: func(value *releaseEvidenceArtifact) { value.PathsIncluded = releaseEvidenceBoolean(true) }},
+		{name: "account redaction", mutate: func(value *releaseEvidenceArtifact) { value.AccountIdentityIncluded = releaseEvidenceBoolean(true) }},
+		{name: "chat redaction", mutate: func(value *releaseEvidenceArtifact) { value.ChatContentIncluded = releaseEvidenceBoolean(true) }},
 		{name: "extra profile", mutate: func(value *releaseEvidenceArtifact) {
 			value.ValidatedCipherProfiles = append(value.ValidatedCipherProfiles, "unexpected-profile")
 		}},
@@ -404,19 +442,26 @@ func TestDarwinPromotionBindsProviderHelperAndRoute(t *testing.T) {
 		RouteSupportState: "supported", ValidatedCipherProfiles: []string{defaultProfileID},
 	}
 	artifact := releaseEvidenceArtifact{
-		SchemaVersion: 1, CandidateSourceCommit: strings.Repeat("a", 40), CandidateWorkflowRunID: "12345",
+		SchemaVersion: 1, QualificationOnly: releaseEvidenceBoolean(false), FormalReleaseEvidence: releaseEvidenceBoolean(true),
+		CandidateSourceCommit: strings.Repeat("a", 40), CandidateWorkflowRunID: "12345",
 		CandidateAttestationWorkflow: releaseCandidateAttestationWorkflow, CandidateAttestationVerified: true,
+		PromotionVerified: releaseEvidenceBoolean(false), RecordedAt: "2026-01-01T00:00:00Z",
 		CandidateArtifactName: releaseCandidateProviderAsset("darwin", "arm64"),
 		RunnerOS:              "darwin", RunnerArch: "arm64", ProviderVersion: version,
 		ProviderBinarySHA256: strings.Repeat("e", 64), ProviderHelperSHA256: strings.Repeat("f", 64),
 		WeChatVersion: entry.Version, WeChatBuild: entry.Build, TargetExecutableSHA256: entry.ExecutableSHA256,
 		BinaryFingerprintStatus: "verified", BinarySigningStatus: "verified", SigningTeamID: entry.SigningTeamID,
 		DesignatedRequirementSHA256: entry.DesignatedRequirementSHA256, ProcessArchitecture: entry.ProcessArchitecture,
-		ProcessArchitectureStatus: "verified_running_process", CompatibilityRegistryStatus: "registered_supported",
-		StandardRouteStatus:   darwinroute.StandardEligibleRegistry,
-		StandardRouteEvidence: []string{"registry_candidate_entry", "registry_exact_match"},
-		RouteSelected:         darwinDynamicRouteID("arm64", ""), TargetBindingStatus: "path_verified",
-		ResultCode: "complete", DatabaseCoverageStatus: "complete", ValidatedCipherProfiles: []string{defaultProfileID},
+		ProcessArchitectureStatus: "verified_running_process", ProcessInventoryStable: releaseEvidenceBoolean(true),
+		CompatibilityRegistryStatus: "registered_supported",
+		StandardRouteStatus:         darwinroute.StandardEligibleRegistry,
+		StandardRouteEvidence:       []string{"registry_candidate_entry", "registry_exact_match"},
+		RouteSelected:               darwinDynamicRouteID("arm64", ""), TargetBindingStatus: "path_verified",
+		ResultCode: "complete", RequestedScopes: []string{"database", "media"},
+		DatabaseCoverageStatus: "complete", MediaCoverageStatus: "complete",
+		DatabaseCount: 1, RequiredDatabaseCount: 1, MatchedDatabaseCount: 1, ValidatedCipherProfiles: []string{defaultProfileID},
+		SecretsIncluded: releaseEvidenceBoolean(false), PathsIncluded: releaseEvidenceBoolean(false),
+		AccountIdentityIncluded: releaseEvidenceBoolean(false), ChatContentIncluded: releaseEvidenceBoolean(false),
 	}
 	root := t.TempDir()
 	digest, _, _ := writeReleaseFixtureArtifact(t, root, artifact)

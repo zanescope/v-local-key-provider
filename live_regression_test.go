@@ -58,6 +58,7 @@ func runLiveAcquisition(t *testing.T) response {
 	if os.Getenv("V_LOCAL_KEY_PROVIDER_LIVE_CONSENT") != liveRegressionConsent {
 		t.Fatal("live regression requires an explicit authorization acknowledgement")
 	}
+	privateConfig := loadLivePrivateConfig(t)
 	binary := liveRequiredEnvironment(t, "V_LOCAL_KEY_PROVIDER_LIVE_BINARY")
 	binary, err := filepath.Abs(binary)
 	if err != nil {
@@ -82,8 +83,8 @@ func runLiveAcquisition(t *testing.T) response {
 	request := acquireRequest{
 		Protocol: protocolName, RequestID: "live-regression", Action: "acquire",
 		CatalogKey: strings.Repeat("42", 32),
-		AccountDir: liveRequiredEnvironment(t, "V_LOCAL_KEY_PROVIDER_LIVE_ACCOUNT_DIR"),
-		DBDir:      liveRequiredEnvironment(t, "V_LOCAL_KEY_PROVIDER_LIVE_DB_DIR"),
+		AccountDir: privateConfig.AccountDir,
+		DBDir:      privateConfig.DBDir,
 		Scopes:     scopes, DeadlineMS: deadlineMS,
 		Workflow: workflowRequest{Operation: "finalize"},
 	}
@@ -91,12 +92,14 @@ func runLiveAcquisition(t *testing.T) response {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer wipeLiveBytes(payload)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(deadlineMS)*time.Millisecond+30*time.Second)
 	defer cancel()
 	command := exec.CommandContext(ctx, binary, "acquire")
 	command.Dir = filepath.Dir(binary)
 	command.Stdin = bytes.NewReader(payload)
 	stdout := &limitedLiveBuffer{limit: maxResponseBytes}
+	defer stdout.wipe()
 	command.Stdout = stdout
 	command.Stderr = io.Discard
 	if err := command.Run(); err != nil {
@@ -127,6 +130,18 @@ type limitedLiveBuffer struct {
 	data  bytes.Buffer
 	limit int
 	over  bool
+}
+
+func wipeLiveBytes(value []byte) {
+	for index := range value {
+		value[index] = 0
+	}
+}
+
+func (buffer *limitedLiveBuffer) wipe() {
+	value := buffer.data.Bytes()
+	wipeLiveBytes(value)
+	buffer.data.Reset()
 }
 
 func (buffer *limitedLiveBuffer) Write(value []byte) (int, error) {
@@ -160,6 +175,10 @@ func assertLiveAcquisition(t *testing.T, result response) {
 			result.Diagnostics.ResultCode, result.Diagnostics.DatabaseCoverageStatus,
 			expectedResult, expectedDatabaseCoverage, result.Diagnostics.NextAction, result.Diagnostics.RouteSelected)
 	}
+	if strings.Join(result.Diagnostics.RequestedScopes, ",") != "database,media" ||
+		result.Diagnostics.MediaCoverageStatus != "complete" || result.ImageKeys == nil {
+		t.Fatal("live regression requires complete database and media coverage")
+	}
 	if expected := strings.TrimSpace(os.Getenv("V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_ROUTE")); expected != "" && result.Diagnostics.RouteSelected != expected {
 		t.Fatalf("live route=%q, want %q", result.Diagnostics.RouteSelected, expected)
 	}
@@ -188,7 +207,7 @@ func assertLiveAcquisition(t *testing.T, result response) {
 	}
 }
 
-func writeLiveEvidence(t *testing.T, result response) {
+func writeLiveEvidence(t *testing.T, result response, processInventoryStable *bool) {
 	t.Helper()
 	path := strings.TrimSpace(os.Getenv("V_LOCAL_KEY_PROVIDER_LIVE_EVIDENCE_PATH"))
 	if path == "" {
@@ -240,108 +259,83 @@ func writeLiveEvidence(t *testing.T, result response) {
 			}
 		}
 	}
-	evidence := struct {
-		SchemaVersion                int              `json:"schema_version"`
-		CandidateSourceCommit        string           `json:"candidate_source_commit"`
-		CandidateWorkflowRunID       string           `json:"candidate_workflow_run_id"`
-		CandidateAttestationWorkflow string           `json:"candidate_attestation_workflow"`
-		CandidateAttestationVerified bool             `json:"candidate_attestation_verified"`
-		CandidateArtifactName        string           `json:"candidate_artifact_name"`
-		RecordedAt                   string           `json:"recorded_at"`
-		RunnerOS                     string           `json:"runner_os"`
-		RunnerArch                   string           `json:"runner_arch"`
-		ProviderVersion              string           `json:"provider_version"`
-		ProviderBinarySHA256         string           `json:"provider_binary_sha256"`
-		ProviderHelperSHA256         string           `json:"provider_helper_sha256,omitempty"`
-		WeChatVersion                string           `json:"wechat_version,omitempty"`
-		WeChatBuild                  string           `json:"wechat_build,omitempty"`
-		ExecutableSHA256             string           `json:"target_executable_sha256,omitempty"`
-		BinaryFingerprintStatus      string           `json:"binary_fingerprint_status"`
-		BinarySigningStatus          string           `json:"binary_signing_status"`
-		BinarySignerSHA256           string           `json:"binary_signer_sha256,omitempty"`
-		BinaryProductIdentity        string           `json:"binary_product_identity,omitempty"`
-		SigningTeamID                string           `json:"signing_team_id,omitempty"`
-		DesignatedRequirementSHA256  string           `json:"designated_requirement_sha256,omitempty"`
-		ProcessArchitecture          string           `json:"process_architecture"`
-		ProcessArchitectureStatus    string           `json:"process_architecture_status"`
-		CompatibilityRegistryStatus  string           `json:"compatibility_registry_status"`
-		ConfigCipherRouteStatus      string           `json:"config_cipher_route_status"`
-		StandardRouteStatus          string           `json:"standard_route_status,omitempty"`
-		StandardRouteEvidence        []string         `json:"standard_route_evidence"`
-		WindowsRouteEvidence         []string         `json:"windows_route_evidence"`
-		RouteSelected                string           `json:"route_selected,omitempty"`
-		RoutesAttempted              []string         `json:"routes_attempted"`
-		TargetBindingStatus          string           `json:"target_binding_status"`
-		SessionAccountStatus         string           `json:"session_account_status"`
-		ResultCode                   string           `json:"result_code"`
-		DatabaseCoverageStatus       string           `json:"database_coverage_status"`
-		MissingDatabaseCount         int              `json:"missing_database_count"`
-		ProcessCount                 int              `json:"process_count"`
-		SelectedProcessCount         int              `json:"selected_process_count"`
-		TargetBoundProcessCount      int              `json:"target_bound_process_count"`
-		OtherAccountProcessCount     int              `json:"other_account_process_count"`
-		UnknownAccountProcessCount   int              `json:"unknown_account_process_count"`
-		OpenedProcessCount           int              `json:"opened_process_count"`
-		AccessDeniedCount            int              `json:"access_denied_count"`
-		PerProcessCollectorCount     int              `json:"per_process_collector_count"`
-		CredentialProcessCount       int              `json:"credential_process_instance_count"`
-		ConfigCipherStructureCount   int              `json:"config_cipher_structure_count"`
-		ConfigCipherInvalidCount     int              `json:"config_cipher_invalid_structure_count"`
-		ConfigCipherCandidateCount   int              `json:"config_cipher_candidate_count"`
-		ConfigCipherVerifiedCount    int              `json:"config_cipher_verified_candidate_count"`
-		FallbackCandidateCount       int              `json:"fallback_candidate_count"`
-		FallbackStageCounts          map[string]int   `json:"fallback_stage_counts"`
-		StaticScanFallback           bool             `json:"static_scan_fallback"`
-		PhaseTimingsMS               map[string]int64 `json:"phase_timings_ms"`
-		ValidatedCipherProfiles      []string         `json:"validated_cipher_profiles"`
-	}{
+	falseValue := false
+	trueValue := true
+	evidence := releaseEvidenceArtifact{
 		SchemaVersion:         1,
+		QualificationOnly:     &falseValue,
+		FormalReleaseEvidence: &trueValue,
 		CandidateSourceCommit: candidateSourceCommit, CandidateWorkflowRunID: candidateWorkflowRunID,
 		CandidateAttestationWorkflow: candidateAttestationWorkflow, CandidateAttestationVerified: true,
+		PromotionVerified:     &falseValue,
 		CandidateArtifactName: candidateArtifactName,
 		RecordedAt:            time.Now().UTC().Format(time.RFC3339Nano),
 		RunnerOS:              runtime.GOOS, RunnerArch: runtime.GOARCH, ProviderVersion: version,
 		ProviderBinarySHA256: executableSHA256(binary), ProviderHelperSHA256: helperSHA256,
 		WeChatVersion: result.Diagnostics.WeChatVersion, WeChatBuild: result.Diagnostics.WeChatBuild,
-		ExecutableSHA256:            result.Diagnostics.ExecutableSHA256,
-		BinaryFingerprintStatus:     result.Diagnostics.BinaryFingerprintStatus,
-		BinarySigningStatus:         result.Diagnostics.BinarySigningStatus,
-		BinarySignerSHA256:          result.Diagnostics.BinarySignerSHA256,
-		BinaryProductIdentity:       result.Diagnostics.BinaryProductIdentity,
-		SigningTeamID:               result.Diagnostics.SigningTeamID,
-		DesignatedRequirementSHA256: result.Diagnostics.DesignatedRequirementSHA256,
-		ProcessArchitecture:         result.Diagnostics.ProcessArchitecture,
-		ProcessArchitectureStatus:   result.Diagnostics.ProcessArchitectureStatus,
-		CompatibilityRegistryStatus: result.Diagnostics.CompatibilityRegistryStatus,
-		ConfigCipherRouteStatus:     result.Diagnostics.ConfigCipherRouteStatus,
-		StandardRouteStatus:         result.Diagnostics.StandardRouteStatus,
-		StandardRouteEvidence:       append([]string(nil), result.Diagnostics.StandardRouteEvidence...),
-		WindowsRouteEvidence:        append([]string(nil), result.Diagnostics.WindowsRouteEvidence...),
-		RouteSelected:               result.Diagnostics.RouteSelected,
-		RoutesAttempted:             append([]string(nil), result.Diagnostics.RoutesAttempted...),
-		TargetBindingStatus:         result.Diagnostics.TargetBindingStatus,
-		SessionAccountStatus:        result.Diagnostics.SessionAccountStatus,
-		ResultCode:                  result.Diagnostics.ResultCode,
-		DatabaseCoverageStatus:      result.Diagnostics.DatabaseCoverageStatus,
-		MissingDatabaseCount:        result.Diagnostics.MissingDatabaseCount,
-		ProcessCount:                result.Diagnostics.ProcessCount,
-		SelectedProcessCount:        result.Diagnostics.SelectedProcessCount,
-		TargetBoundProcessCount:     result.Diagnostics.TargetBoundProcessCount,
-		OtherAccountProcessCount:    result.Diagnostics.OtherAccountProcessCount,
-		UnknownAccountProcessCount:  result.Diagnostics.UnknownAccountProcessCount,
-		OpenedProcessCount:          result.Diagnostics.OpenedProcessCount,
-		AccessDeniedCount:           result.Diagnostics.AccessDeniedCount,
-		PerProcessCollectorCount:    result.Diagnostics.PerProcessCollectorCount,
-		CredentialProcessCount:      len(credentialProcessInstances),
-		ConfigCipherStructureCount:  result.Diagnostics.ConfigCipherStructureCount,
-		ConfigCipherInvalidCount:    result.Diagnostics.ConfigCipherInvalidCount,
-		ConfigCipherCandidateCount:  result.Diagnostics.ConfigCipherCandidateCount,
-		ConfigCipherVerifiedCount:   result.Diagnostics.ConfigCipherVerifiedCount,
-		FallbackCandidateCount:      result.Diagnostics.FallbackCandidateCount,
-		FallbackStageCounts:         result.Diagnostics.FallbackStageCounts,
-		StaticScanFallback:          result.Diagnostics.StaticScanFallback,
-		PhaseTimingsMS:              result.Diagnostics.PhaseTimingsMS,
-		ValidatedCipherProfiles:     validatedProfiles,
+		TargetExecutableSHA256:       result.Diagnostics.ExecutableSHA256,
+		BinaryFingerprintStatus:      result.Diagnostics.BinaryFingerprintStatus,
+		BinarySigningStatus:          result.Diagnostics.BinarySigningStatus,
+		BinarySignerSHA256:           result.Diagnostics.BinarySignerSHA256,
+		BinaryProductIdentity:        result.Diagnostics.BinaryProductIdentity,
+		SigningTeamID:                result.Diagnostics.SigningTeamID,
+		DesignatedRequirementSHA256:  result.Diagnostics.DesignatedRequirementSHA256,
+		ProcessArchitecture:          result.Diagnostics.ProcessArchitecture,
+		ProcessArchitectureStatus:    result.Diagnostics.ProcessArchitectureStatus,
+		ProcessInventoryStable:       processInventoryStable,
+		CompatibilityRegistryStatus:  result.Diagnostics.CompatibilityRegistryStatus,
+		ConfigCipherRouteStatus:      result.Diagnostics.ConfigCipherRouteStatus,
+		StandardRouteStatus:          result.Diagnostics.StandardRouteStatus,
+		StandardRouteEvidence:        append([]string(nil), result.Diagnostics.StandardRouteEvidence...),
+		WindowsRouteEvidence:         append([]string(nil), result.Diagnostics.WindowsRouteEvidence...),
+		RouteSelected:                result.Diagnostics.RouteSelected,
+		RoutesAttempted:              append([]string(nil), result.Diagnostics.RoutesAttempted...),
+		TargetBindingStatus:          result.Diagnostics.TargetBindingStatus,
+		SessionAccountStatus:         result.Diagnostics.SessionAccountStatus,
+		ResultCode:                   result.Diagnostics.ResultCode,
+		RequestedScopes:              append([]string(nil), result.Diagnostics.RequestedScopes...),
+		DatabaseCoverageStatus:       result.Diagnostics.DatabaseCoverageStatus,
+		MediaCoverageStatus:          result.Diagnostics.MediaCoverageStatus,
+		DatabaseCount:                result.Diagnostics.DatabaseCount,
+		RequiredDatabaseCount:        result.Diagnostics.RequiredDatabaseCount,
+		PlaintextDatabaseCount:       result.Diagnostics.PlaintextDatabaseCount,
+		UnreadableDatabaseCount:      result.Diagnostics.UnreadableDatabaseCount,
+		UnstableDatabaseCount:        result.Diagnostics.UnstableDatabaseCount,
+		TruncatedDatabaseCount:       result.Diagnostics.TruncatedDatabaseCount,
+		MatchedDatabaseCount:         result.Diagnostics.MatchedDatabaseCount,
+		MissingDatabaseCount:         result.Diagnostics.MissingDatabaseCount,
+		ProcessCount:                 result.Diagnostics.ProcessCount,
+		SelectedProcessCount:         result.Diagnostics.SelectedProcessCount,
+		TargetBoundProcessCount:      result.Diagnostics.TargetBoundProcessCount,
+		OtherAccountProcessCount:     result.Diagnostics.OtherAccountProcessCount,
+		UnknownAccountProcessCount:   result.Diagnostics.UnknownAccountProcessCount,
+		OpenedProcessCount:           result.Diagnostics.OpenedProcessCount,
+		AccessDeniedCount:            result.Diagnostics.AccessDeniedCount,
+		PerProcessCollectorCount:     result.Diagnostics.PerProcessCollectorCount,
+		CredentialProcessCount:       len(credentialProcessInstances),
+		ConfigCipherStructureCount:   result.Diagnostics.ConfigCipherStructureCount,
+		ConfigCipherInvalidCount:     result.Diagnostics.ConfigCipherInvalidCount,
+		ConfigCipherCandidateCount:   result.Diagnostics.ConfigCipherCandidateCount,
+		ConfigCipherVerifiedCount:    result.Diagnostics.ConfigCipherVerifiedCount,
+		FallbackCandidateCount:       result.Diagnostics.FallbackCandidateCount,
+		FallbackStageCounts:          result.Diagnostics.FallbackStageCounts,
+		StaticScanFallback:           result.Diagnostics.StaticScanFallback,
+		V2SampleCount:                result.Diagnostics.V2SampleCount,
+		XORSampleCount:               result.Diagnostics.XORSampleCount,
+		XORDistinctCandidateCount:    result.Diagnostics.XORDistinctCandidateCount,
+		MediaAESCandidateCount:       result.Diagnostics.MediaAESCandidateCount,
+		KVCommCodeCandidateCount:     result.Diagnostics.KVCommCodeCandidateCount,
+		KVCommVerifiedCandidateCount: result.Diagnostics.KVCommVerifiedCandidateCount,
+		MediaCandidateMethod:         result.Diagnostics.MediaCandidateMethod,
+		PhaseTimingsMS:               result.Diagnostics.PhaseTimingsMS,
+		ValidatedCipherProfiles:      validatedProfiles,
+		SecretsIncluded:              &falseValue,
+		PathsIncluded:                &falseValue,
+		AccountIdentityIncluded:      &falseValue,
+		ChatContentIncluded:          &falseValue,
+	}
+	if err := validateReleaseEvidenceArtifact(evidence); err != nil {
+		t.Fatal("live evidence failed the release schema gate")
 	}
 	payload, err := json.MarshalIndent(evidence, "", "  ")
 	if err != nil {
@@ -383,5 +377,5 @@ func TestMacOSLiveAcquisition(t *testing.T) {
 		!containsString(diag.StandardRouteEvidence, "registry_candidate_entry") {
 		t.Fatal("Darwin live route is not bound to the exact candidate registry entry")
 	}
-	writeLiveEvidence(t, result)
+	writeLiveEvidence(t, result, nil)
 }

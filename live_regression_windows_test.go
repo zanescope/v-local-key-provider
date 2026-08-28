@@ -41,8 +41,8 @@ func TestWindowsLiveAcquisition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cannot inventory Windows target processes after acquisition: %v", err)
 	}
-	if liveExpectedBoolean(t, "V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_STABLE") &&
-		(instanceBefore != platformProcessInstanceID() || len(processesBefore) != len(processesAfter)) {
+	processInventoryStable := instanceBefore == platformProcessInstanceID() && len(processesBefore) == len(processesAfter)
+	if liveExpectedBoolean(t, "V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_STABLE") && !processInventoryStable {
 		t.Fatalf("target process inventory changed during the default no-termination workflow: before=%d after=%d",
 			len(processesBefore), len(processesAfter))
 	}
@@ -125,7 +125,7 @@ func TestWindowsLiveAcquisition(t *testing.T) {
 	default:
 		t.Fatalf("Phase 4 live regression does not accept unknown route %q", expectedRoute)
 	}
-	writeLiveEvidence(t, result)
+	writeLiveEvidence(t, result, &processInventoryStable)
 }
 
 func containsLiveEvidence(values []string, wanted string) bool {
