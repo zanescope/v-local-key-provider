@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"unsafe"
 
 	"golang.org/x/sys/windows"
 )
@@ -32,15 +33,63 @@ func setWindowsLiveTestDACL(t *testing.T, path, sddl string, protected bool) {
 	}
 }
 
+func windowsLiveTestSecurityAttributes(t *testing.T, sddl string) *windows.SecurityAttributes {
+	t.Helper()
+	descriptor, err := windows.SecurityDescriptorFromString(sddl)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &windows.SecurityAttributes{
+		Length:             uint32(unsafe.Sizeof(windows.SecurityAttributes{})),
+		SecurityDescriptor: descriptor,
+	}
+}
+
+func createWindowsLiveTestDirectory(t *testing.T, path, sddl string) {
+	t.Helper()
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := windows.CreateDirectory(name, windowsLiveTestSecurityAttributes(t, sddl)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func createWindowsLiveTestFile(t *testing.T, path, sddl string, payload []byte) {
+	t.Helper()
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := windows.CreateFile(name, windows.GENERIC_READ|windows.GENERIC_WRITE|windows.READ_CONTROL,
+		windows.FILE_SHARE_READ, windowsLiveTestSecurityAttributes(t, sddl), windows.CREATE_NEW,
+		windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := os.NewFile(uintptr(handle), "live-private-config-fixture")
+	if file == nil {
+		_ = windows.CloseHandle(handle)
+		t.Fatal("live config fixture handle is unavailable")
+	}
+	if _, err := file.Write(payload); err != nil {
+		_ = file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestWindowsLivePrivateConfigRequiresExclusiveProtectedACL(t *testing.T) {
 	currentUser, err := windows.GetCurrentProcessToken().GetTokenUser()
 	if err != nil || currentUser == nil || currentUser.User.Sid == nil {
 		t.Fatal("current Windows user SID is unavailable")
 	}
 	private := filepath.Join(t.TempDir(), "private")
-	if err := os.Mkdir(private, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	exclusive := "D:P(A;;FA;;;" + currentUser.User.Sid.String() + ")(A;;FA;;;SY)"
+	createWindowsLiveTestDirectory(t, private, "O:"+currentUser.User.Sid.String()+exclusive)
 	account := t.TempDir()
 	database := t.TempDir()
 	payload, err := json.Marshal(map[string]any{
@@ -52,12 +101,7 @@ func TestWindowsLivePrivateConfigRequiresExclusiveProtectedACL(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(private, "config.json")
-	if err := os.WriteFile(path, payload, 0o600); err != nil {
-		t.Fatal(err)
-	}
-	exclusive := "D:P(A;;FA;;;" + currentUser.User.Sid.String() + ")(A;;FA;;;SY)"
-	setWindowsLiveTestDACL(t, private, exclusive, true)
-	setWindowsLiveTestDACL(t, path, exclusive, true)
+	createWindowsLiveTestFile(t, path, "O:"+currentUser.User.Sid.String()+exclusive, payload)
 	if _, err := readWindowsLivePrivateConfig(path); err != nil {
 		t.Fatalf("exclusive protected live config was rejected: %v", err)
 	}
