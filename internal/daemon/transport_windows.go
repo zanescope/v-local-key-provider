@@ -124,12 +124,14 @@ func (value *namedPipeListener) nextHandle() (windows.Handle, error) {
 	return handle, err
 }
 
-func (value *namedPipeListener) clearPending(handle windows.Handle) {
+func (value *namedPipeListener) takePending(handle windows.Handle) bool {
 	value.mu.Lock()
+	defer value.mu.Unlock()
 	if value.pending == handle {
 		value.pending = windows.InvalidHandle
+		return true
 	}
-	value.mu.Unlock()
+	return false
 }
 
 func (value *namedPipeListener) acceptDeadline() time.Time {
@@ -149,10 +151,13 @@ func (value *namedPipeListener) Accept() (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	claimed := false
 	connected := false
 	defer func() {
-		value.clearPending(handle)
-		if !connected {
+		if !claimed {
+			claimed = value.takePending(handle)
+		}
+		if claimed && !connected {
 			_ = windows.CloseHandle(handle)
 		}
 	}()
@@ -207,6 +212,12 @@ func (value *namedPipeListener) Accept() (net.Conn, error) {
 	if err := windows.GetNamedPipeClientProcessId(handle, &peerPID); err != nil || peerPID == 0 {
 		return nil, errors.New("named pipe client PID is unavailable")
 	}
+	// listener.Close 与 Accept 竞争时只能由一方取得 pending handle 的清理权，防止句柄值
+	// 被系统复用后发生二次关闭并误伤 Go runtime 的内部 event。
+	if !value.takePending(handle) {
+		return nil, net.ErrClosed
+	}
+	claimed = true
 	file := os.NewFile(uintptr(handle), value.path)
 	if file == nil {
 		return nil, errors.New("named pipe handle could not be attached to the Go poller")

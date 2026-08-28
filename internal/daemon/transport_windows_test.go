@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
 type peerPIDTestConnection struct {
@@ -42,4 +44,46 @@ func TestNamedPipePeerUserMatchesCurrentProcess(t *testing.T) {
 	if err != nil || !matched {
 		t.Fatalf("current process user did not match the daemon user: matched=%v err=%v", matched, err)
 	}
+}
+
+func TestNamedPipePendingHandleHasSingleCleanupOwner(t *testing.T) {
+	t.Run("Accept 先取得清理权", func(t *testing.T) {
+		event, err := windows.CreateEvent(nil, 1, 0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listener := &namedPipeListener{
+			firstHandle: windows.InvalidHandle,
+			pending:     event,
+		}
+		if !listener.takePending(event) {
+			t.Fatal("Accept 未取得 pending handle 的清理权")
+		}
+		if listener.takePending(event) {
+			t.Fatal("同一个 pending handle 被重复认领")
+		}
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if err := windows.CloseHandle(event); err != nil {
+			t.Fatal("listener.Close 关闭了已由 Accept 认领的 handle")
+		}
+	})
+
+	t.Run("Close 先取得清理权", func(t *testing.T) {
+		event, err := windows.CreateEvent(nil, 1, 0, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		listener := &namedPipeListener{
+			firstHandle: windows.InvalidHandle,
+			pending:     event,
+		}
+		if err := listener.Close(); err != nil {
+			t.Fatal(err)
+		}
+		if listener.takePending(event) {
+			t.Fatal("Close 已清理的 pending handle 被 Accept 再次认领")
+		}
+	})
 }
