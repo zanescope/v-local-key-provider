@@ -30,6 +30,7 @@ const (
 	ConfigCipherUnavailableUnknown   = "unavailable_unregistered"
 	ConfigCipherUnavailableUntrusted = "unavailable_untrusted_binary"
 	ConfigCipherEligible             = "eligible_registered"
+	ConfigCipherReviewedNoStructure  = "registered_reviewed_no_structure"
 	ConfigCipherNoStructure          = "attempted_no_structure"
 	ConfigCipherInvalidStructure     = "attempted_invalid_structure"
 	ConfigCipherNoVerifiedCandidate  = "attempted_no_verified_candidate"
@@ -63,6 +64,12 @@ type ConfigCipherRecipe struct {
 	MaxMatches        int
 }
 
+func (recipe ConfigCipherRecipe) Empty() bool {
+	return len(recipe.Needle) == 0 && len(recipe.PointerOffsets) == 0 && recipe.DataOffset == 0 &&
+		recipe.EncodedLength == 0 && recipe.CandidateEncoding == "" && recipe.CandidateKind == "" &&
+		len(recipe.XORMask) == 0 && recipe.MaxMatches == 0
+}
+
 func (recipe ConfigCipherRecipe) Valid() bool {
 	if len(recipe.Needle) == 0 || len(recipe.Needle) > 256 || len(recipe.PointerOffsets) > 4 {
 		return false
@@ -86,15 +93,17 @@ func (recipe ConfigCipherRecipe) Valid() bool {
 }
 
 type CompatibilityEntry struct {
-	Version             string
-	Build               string
-	ExecutableSHA256    string
-	BinarySignerSHA256  string
-	ProcessArchitecture string
-	ProductIdentity     string
-	RouteSupportState   string
-	ValidatedProfiles   []string
-	Recipe              ConfigCipherRecipe
+	Version                    string
+	Build                      string
+	ExecutableSHA256           string
+	BinarySignerSHA256         string
+	ProcessArchitecture        string
+	ProductIdentity            string
+	RouteSupportState          string
+	ConfigCipherSupportState   string
+	MemoryFallbackSupportState string
+	ValidatedProfiles          []string
+	Recipe                     ConfigCipherRecipe
 }
 
 type RouteDecision struct {
@@ -107,12 +116,12 @@ type RouteDecision struct {
 type EvaluationPolicy struct {
 	ReleaseBuild      bool
 	PromotionReady    bool
+	QualificationOnly bool
 	ProfileRegistered func(string) bool
 }
 
 func ValidSHA256(value string) bool {
-	value = strings.TrimSpace(value)
-	if len(value) != 64 || value != strings.ToLower(value) {
+	if len(value) != 64 || value != strings.TrimSpace(value) || value != strings.ToLower(value) {
 		return false
 	}
 	decoded, err := hex.DecodeString(value)
@@ -128,13 +137,35 @@ func RegistryEntryMatches(entry CompatibilityEntry, evidence BinaryEvidence) boo
 		entry.ProductIdentity == evidence.ProductIdentity
 }
 
-func RegistryEntryEligible(entry CompatibilityEntry, profileRegistered func(string) bool) bool {
-	if entry.RouteSupportState != "supported" || !entry.Recipe.Valid() ||
+func registryEntryShapeEligible(entry CompatibilityEntry, profileRegistered func(string) bool) bool {
+	if (entry.RouteSupportState != "supported" && entry.RouteSupportState != "qualification_hypothesis") ||
 		entry.Version == "" || entry.Build == "" ||
 		!ValidSHA256(entry.ExecutableSHA256) || !ValidSHA256(entry.BinarySignerSHA256) ||
 		(entry.ProcessArchitecture != "amd64" && entry.ProcessArchitecture != "arm64") ||
 		(entry.ProductIdentity != "weixin.exe" && entry.ProductIdentity != "wechat.exe") ||
 		len(entry.ValidatedProfiles) == 0 || profileRegistered == nil {
+		return false
+	}
+	switch entry.ConfigCipherSupportState {
+	case "verified":
+		if !entry.Recipe.Valid() {
+			return false
+		}
+	case "qualification_hypothesis":
+		if entry.RouteSupportState != "qualification_hypothesis" || !entry.Recipe.Valid() {
+			return false
+		}
+	case "reviewed_no_structure":
+		if !entry.Recipe.Empty() {
+			return false
+		}
+	default:
+		return false
+	}
+	if entry.MemoryFallbackSupportState != "supported" && entry.MemoryFallbackSupportState != "unsupported" {
+		return false
+	}
+	if entry.ConfigCipherSupportState == "reviewed_no_structure" && entry.MemoryFallbackSupportState != "supported" {
 		return false
 	}
 	profiles := map[string]bool{}
@@ -147,28 +178,44 @@ func RegistryEntryEligible(entry CompatibilityEntry, profileRegistered func(stri
 	return true
 }
 
+func RegistryEntryEligible(entry CompatibilityEntry, profileRegistered func(string) bool) bool {
+	return entry.RouteSupportState == "supported" && registryEntryShapeEligible(entry, profileRegistered)
+}
+
 func RegistryEntryRuntimeEligible(entry CompatibilityEntry, policy EvaluationPolicy) bool {
-	return RegistryEntryEligible(entry, policy.ProfileRegistered) &&
+	if !registryEntryShapeEligible(entry, policy.ProfileRegistered) {
+		return false
+	}
+	if entry.RouteSupportState == "qualification_hypothesis" && !policy.QualificationOnly {
+		return false
+	}
+	return (entry.RouteSupportState == "supported" || policy.QualificationOnly) &&
 		(!policy.ReleaseBuild || policy.PromotionReady)
 }
 
-func TrustedFallbackSigner(signer, architecture string, registry []CompatibilityEntry, policy EvaluationPolicy) bool {
-	if !ValidSHA256(signer) || (architecture != "amd64" && architecture != "arm64") {
-		return false
-	}
+func matchingRuntimeEntry(evidence BinaryEvidence, registry []CompatibilityEntry, policy EvaluationPolicy) (CompatibilityEntry, bool) {
 	for _, entry := range registry {
-		if RegistryEntryRuntimeEligible(entry, policy) && entry.BinarySignerSHA256 == signer &&
-			entry.ProcessArchitecture == architecture {
-			return true
+		if RegistryEntryRuntimeEligible(entry, policy) && RegistryEntryMatches(entry, evidence) {
+			return entry, true
 		}
 	}
-	return false
+	return CompatibilityEntry{}, false
+}
+
+func MemoryAccessIdentityEligible(evidence BinaryEvidence, registry []CompatibilityEntry, policy EvaluationPolicy) bool {
+	if evidence.BinarySigningStatus != SigningVerified {
+		return false
+	}
+	_, found := matchingRuntimeEntry(evidence, registry, policy)
+	return found
 }
 
 func FallbackIdentityEligible(evidence BinaryEvidence, registry []CompatibilityEntry, policy EvaluationPolicy) bool {
-	return evidence.BinarySigningStatus == SigningVerified &&
-		(evidence.ProductIdentity == "weixin.exe" || evidence.ProductIdentity == "wechat.exe") &&
-		TrustedFallbackSigner(evidence.BinarySignerSHA256, evidence.ProcessArchitecture, registry, policy)
+	if evidence.BinarySigningStatus != SigningVerified {
+		return false
+	}
+	entry, found := matchingRuntimeEntry(evidence, registry, policy)
+	return found && entry.MemoryFallbackSupportState == "supported"
 }
 
 func NormalizeProductIdentity(currentName, originalFilename, productName, companyName string) string {
@@ -176,7 +223,11 @@ func NormalizeProductIdentity(currentName, originalFilename, productName, compan
 	original := strings.ToLower(strings.TrimSpace(originalFilename))
 	product := strings.ToLower(strings.TrimSpace(productName))
 	company := strings.ToLower(strings.TrimSpace(companyName))
-	if current != original || (original != "weixin.exe" && original != "wechat.exe") {
+	if current != "weixin.exe" && current != "wechat.exe" {
+		return ""
+	}
+	// 某些官方构建没有填写 OriginalFilename；非空时仍必须与当前精确文件名一致。
+	if original != "" && (current != original || (original != "weixin.exe" && original != "wechat.exe")) {
 		return ""
 	}
 	if !strings.Contains(product, "weixin") && !strings.Contains(product, "wechat") &&
@@ -186,7 +237,7 @@ func NormalizeProductIdentity(currentName, originalFilename, productName, compan
 	if !strings.Contains(company, "tencent") && !strings.Contains(companyName, "腾讯") {
 		return ""
 	}
-	return original
+	return current
 }
 
 func EvaluateRoute(evidence BinaryEvidence, registry []CompatibilityEntry, policy EvaluationPolicy) RouteDecision {
@@ -237,8 +288,15 @@ func EvaluateRoute(evidence BinaryEvidence, registry []CompatibilityEntry, polic
 		decision.EntryIndex = index
 		if RegistryEntryRuntimeEligible(entry, policy) {
 			decision.CompatibilityRegistryStatus = RegistryRegisteredSupported
-			decision.ConfigCipherRouteStatus = ConfigCipherEligible
+			if entry.ConfigCipherSupportState == "verified" || entry.ConfigCipherSupportState == "qualification_hypothesis" {
+				decision.ConfigCipherRouteStatus = ConfigCipherEligible
+			} else {
+				decision.ConfigCipherRouteStatus = ConfigCipherReviewedNoStructure
+			}
 			decision.Evidence = []string{"registry_candidate_entry", "registry_exact_match"}
+			if policy.QualificationOnly {
+				decision.Evidence = []string{"qualification_only_override", "registry_exact_match"}
+			}
 			if policy.ReleaseBuild {
 				decision.Evidence = []string{"real_device_evidence_present", "registry_exact_match", "release_promotion_verified"}
 			}
@@ -268,14 +326,16 @@ func ConfigStatusRank(status string) int {
 		return 6
 	case ConfigCipherNoStructure:
 		return 5
-	case ConfigCipherEligible:
+	case ConfigCipherReviewedNoStructure:
 		return 4
-	case ConfigCipherUnavailableUntrusted:
+	case ConfigCipherEligible:
 		return 3
-	case ConfigCipherUnavailableUnknown:
+	case ConfigCipherUnavailableUntrusted:
 		return 2
-	case ConfigCipherNotEvaluated:
+	case ConfigCipherUnavailableUnknown:
 		return 1
+	case ConfigCipherNotEvaluated:
+		return 0
 	default:
 		return 0
 	}

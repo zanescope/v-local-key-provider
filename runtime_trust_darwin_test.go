@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestPhase5DarwinDirectoryTreeRejectsWritableAncestor(t *testing.T) {
+func TestDarwinDirectoryTreeRejectsWritableAncestor(t *testing.T) {
 	root, err := os.MkdirTemp(".", ".darwin-provider-trust-")
 	if err != nil {
 		t.Fatal(err)

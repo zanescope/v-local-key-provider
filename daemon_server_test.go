@@ -164,7 +164,7 @@ func TestAcquisitionDaemonDoesNotLetSlowUnauthenticatedClientBlockPing(t *testin
 	}
 }
 
-func TestPhase2DaemonRejectsGuessedTokenWithoutAffectingAuthenticatedSession(t *testing.T) {
+func TestDaemonRejectsGuessedTokenWithoutAffectingAuthenticatedSession(t *testing.T) {
 	endpointPath := filepath.Join(secureDaemonTestDirectory(t), "endpoint.json")
 	finished := make(chan error, 1)
 	go func() { finished <- serveAcquisitionDaemon(endpointPath) }()

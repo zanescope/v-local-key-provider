@@ -1,4 +1,4 @@
-name: Phase 3-4 live regression
+name: Live regression
 
 on:
   workflow_dispatch:
@@ -157,7 +157,7 @@ jobs:
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_STABLE: ${{ inputs.expect_process_stable }}
           V_LOCAL_KEY_PROVIDER_LIVE_EVIDENCE_PATH: ${{ github.workspace }}/build/live/evidence.json
           V_LOCAL_KEY_PROVIDER_LIVE_SCOPES: ${{ inputs.scopes }}
-        run: go test -tags=live_regression -run '^TestPhase(3MacOS|4Windows)LiveAcquisition$' -count=1 .
+        run: go test -tags=live_regression -run '^Test(MacOS|Windows)LiveAcquisition$' -count=1 .
       - name: 上传脱敏真机证据
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

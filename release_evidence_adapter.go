@@ -40,20 +40,26 @@ func releaseEvidenceRegistryEntries(platform, architecture string) []releaseevid
 			if entry.ProcessArchitecture != architecture || !windowsRegistryEntryEligible(entry) {
 				continue
 			}
-			entries = append(entries, releaseevidence.RegistryEntry{
-				Platform:                        "windows",
-				Architecture:                    entry.ProcessArchitecture,
-				WeChatVersion:                   entry.Version,
-				WeChatBuild:                     entry.Build,
-				TargetExecutableSHA256:          entry.ExecutableSHA256,
-				BinarySignerSHA256:              entry.BinarySignerSHA256,
-				BinaryProductIdentity:           entry.ProductIdentity,
-				AllowedTargetBindingStatuses:    []string{"hmac_verified", "path_verified"},
-				RequiredConfigCipherRouteStatus: windowsroute.ConfigCipherSucceeded,
-				AllowedRoutes:                   []string{"windows_config_cipher"},
-				RequiredRouteEvidence:           "registry_candidate_entry",
-				ValidatedCipherProfiles:         append([]string(nil), entry.ValidatedProfiles...),
-			})
+			projection := releaseevidence.RegistryEntry{
+				Platform:                     "windows",
+				Architecture:                 entry.ProcessArchitecture,
+				WeChatVersion:                entry.Version,
+				WeChatBuild:                  entry.Build,
+				TargetExecutableSHA256:       entry.ExecutableSHA256,
+				BinarySignerSHA256:           entry.BinarySignerSHA256,
+				BinaryProductIdentity:        entry.ProductIdentity,
+				AllowedTargetBindingStatuses: []string{"hmac_verified", "path_verified"},
+				RequiredRouteEvidence:        "registry_candidate_entry",
+				ValidatedCipherProfiles:      append([]string(nil), entry.ValidatedProfiles...),
+			}
+			if entry.ConfigCipherSupportState == "reviewed_no_structure" {
+				projection.RequiredConfigCipherRouteStatus = windowsroute.ConfigCipherReviewedNoStructure
+				projection.AllowedRoutes = []string{"windows_memory_fallback"}
+			} else {
+				projection.RequiredConfigCipherRouteStatus = windowsroute.ConfigCipherSucceeded
+				projection.AllowedRoutes = []string{"windows_config_cipher"}
+			}
+			entries = append(entries, projection)
 		}
 	case "darwin":
 		for _, entry := range darwinCompatibilityRegistry {

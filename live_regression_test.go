@@ -360,7 +360,7 @@ func writeLiveEvidence(t *testing.T, result response) {
 	}
 }
 
-func TestPhase3MacOSLiveAcquisition(t *testing.T) {
+func TestMacOSLiveAcquisition(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("Phase 3 live regression only runs on macOS")
 	}

@@ -32,7 +32,7 @@ const (
 	StandardUnsupported      = "unsupported_for_target"
 )
 
-// BinaryEvidence 只包含机器可验证的 routing 输入。路径、秘密和用户提供的描述有意不参与
+// BinaryEvidence 只包含机器可验证的 routing 输入。路径、凭据和用户提供的描述有意不参与
 // 决策，也不会出现在 diagnostics 中。
 type BinaryEvidence struct {
 	Version                     string

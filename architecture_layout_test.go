@@ -29,6 +29,7 @@ func TestProviderRootProductionFilesStayOnCompositionAllowlist(t *testing.T) {
 			"platform_darwin.go", "platform_darwin_nocgo.go", "platform_helper_darwin.go", "platform_helper_other.go",
 			"platform_session_other.go", "platform_unsupported.go",
 			"runtime_trust_darwin.go", "runtime_trust_other.go", "runtime_trust_windows.go",
+			"qualification_bootstrap_disabled.go", "qualification_bootstrap_unsupported.go", "qualification_bootstrap_windows.go",
 			"security_posture_darwin.go", "security_posture_other.go",
 			"session_process_darwin_nocgo.go", "session_process_other.go",
 			"windows_acquisition_windows.go", "windows_config_cipher_adapter.go", "windows_route_registry.go",

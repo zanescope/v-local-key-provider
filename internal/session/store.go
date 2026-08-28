@@ -119,16 +119,26 @@ func cloneStringMap(values map[string]string) map[string]string {
 	return clone
 }
 
+func cloneStringSlice(values []string) []string {
+	if values == nil {
+		return nil
+	}
+	clone := make([]string, len(values))
+	copy(clone, values)
+	return clone
+}
+
 func cloneDiagnostics(value diagnosticmodel.Diagnostics) diagnosticmodel.Diagnostics {
 	clone := value
-	clone.RequestedScopes = append([]string(nil), value.RequestedScopes...)
-	clone.RoutePriority = append([]string(nil), value.RoutePriority...)
-	clone.BlockingReasons = append([]string(nil), value.BlockingReasons...)
-	clone.CandidateSources = append([]string(nil), value.CandidateSources...)
-	clone.MissingDatabaseIDs = append([]string(nil), value.MissingDatabaseIDs...)
-	clone.RoutesAttempted = append([]string(nil), value.RoutesAttempted...)
-	clone.StandardRouteEvidence = append([]string(nil), value.StandardRouteEvidence...)
-	clone.WindowsRouteEvidence = append([]string(nil), value.WindowsRouteEvidence...)
+	// 诊断协议区分显式空数组与 null；会话往返时必须保留这一语义。
+	clone.RequestedScopes = cloneStringSlice(value.RequestedScopes)
+	clone.RoutePriority = cloneStringSlice(value.RoutePriority)
+	clone.BlockingReasons = cloneStringSlice(value.BlockingReasons)
+	clone.CandidateSources = cloneStringSlice(value.CandidateSources)
+	clone.MissingDatabaseIDs = cloneStringSlice(value.MissingDatabaseIDs)
+	clone.RoutesAttempted = cloneStringSlice(value.RoutesAttempted)
+	clone.StandardRouteEvidence = cloneStringSlice(value.StandardRouteEvidence)
+	clone.WindowsRouteEvidence = cloneStringSlice(value.WindowsRouteEvidence)
 	if value.PhaseTimingsMS != nil {
 		clone.PhaseTimingsMS = make(map[string]int64, len(value.PhaseTimingsMS))
 		for key, timing := range value.PhaseTimingsMS {

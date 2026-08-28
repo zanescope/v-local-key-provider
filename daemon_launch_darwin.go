@@ -11,7 +11,7 @@ import (
 
 // delegateAcquisitionDaemonToPlatformHelper 用已安装的配套辅助程序替换短生命周期的
 // 启动器，使守护进程沿用与单次获取相同的可信进程访问路径。命令行中不会携带请求或
-// 秘密，只会转发私有端点路径和启动器身份。修改 SIP 和管理员提权不属于第二阶段范围。
+// 凭据，只会转发私有端点路径和启动器身份。修改 SIP 和管理员提权不属于第二阶段范围。
 func delegateAcquisitionDaemonToPlatformHelper(endpointPath, clientPath string) (bool, error) {
 	helper, trustStatus := darwinHelperExecutableWithStatus()
 	if helper == "" {

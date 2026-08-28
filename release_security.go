@@ -35,7 +35,7 @@ func knownBuildMode(value string) bool {
 }
 
 func releasePromotionReady() bool {
-	return validWindowsSHA256(strings.ToLower(strings.TrimSpace(releasePromotionSHA256)))
+	return validWindowsSHA256(releasePromotionSHA256)
 }
 
 func validateReleaseCompatibilityRegistry(platform, architecture string, windowsEntries []windowsCompatibilityEntry, darwinEntries []darwinCompatibilityEntry) error {

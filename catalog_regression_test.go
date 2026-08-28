@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestPhase0CatalogProofChangesWhenPhysicalFileChanges(t *testing.T) {
+func TestCatalogProofChangesWhenPhysicalFileChanges(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "message.db")
 	key := bytes.Repeat([]byte{0x73}, 32)

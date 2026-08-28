@@ -45,7 +45,7 @@ func TestDarwinHelperExecutableRejectsNonExecutableFile(t *testing.T) {
 	}
 }
 
-func TestPhase5DarwinHelperPathOverrideRequiresExplicitDevelopmentOptIn(t *testing.T) {
+func TestDarwinHelperPathOverrideRequiresExplicitDevelopmentOptIn(t *testing.T) {
 	helper := filepath.Join(t.TempDir(), darwinHelperName)
 	if err := os.WriteFile(helper, []byte("helper"), 0o700); err != nil {
 		t.Fatal(err)
@@ -57,7 +57,7 @@ func TestPhase5DarwinHelperPathOverrideRequiresExplicitDevelopmentOptIn(t *testi
 	}
 }
 
-func TestPhase5DarwinReleaseRejectsHelperOverrideDespiteDevelopmentOptIn(t *testing.T) {
+func TestDarwinReleaseRejectsHelperOverrideDespiteDevelopmentOptIn(t *testing.T) {
 	previous := buildMode
 	buildMode = "release"
 	t.Cleanup(func() { buildMode = previous })
@@ -88,7 +88,7 @@ func TestDarwinHelperModeRejectsUnknownValue(t *testing.T) {
 	}
 }
 
-func TestPhase5DarwinReleaseDisablesElevatedCompatibilityPath(t *testing.T) {
+func TestDarwinReleaseDisablesElevatedCompatibilityPath(t *testing.T) {
 	previous := buildMode
 	buildMode = "release"
 	t.Cleanup(func() { buildMode = previous })

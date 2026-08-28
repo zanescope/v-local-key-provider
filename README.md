@@ -8,22 +8,24 @@
 
 | 平台 | 架构 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| Windows | amd64 | 实验性、可构建 | Phase 4 路径与专用真机门禁已具备；当前仍为 `build_only`。 |
+| Windows | amd64 | 实验性、可构建 | 路径与专用真机门禁已具备；当前仍为 `build_only`。 |
 | Windows | arm64 | 实验性、可构建 | 独立发布资产和真机回归入口已具备；未取得 ARM64 微信真机证据前保持 `build_only`。 |
 | macOS | amd64（Intel） | 历史验证、当前 `build_only` | 4.1.11 有未绑定当前候选件的历史记录；正式版须重新取得内容寻址的精确 registry 证据。 |
 | macOS | arm64（Apple Silicon） | 实验性、可构建 | 尚无合格的 Apple Silicon 真机证据，正式版保持 fail closed。 |
 | 其他平台 | 不适用 | 不支持自动获取候选密钥 | 可以继续使用调用方提供的候选文件。 |
 
 Windows 会先读取正在运行的 Weixin/WeChat 进程的实际架构、可执行文件 SHA-256、Authenticode
-签名者证书 SHA-256、文件版本/build 和产品身份。只有这些字段与带独立真机证据的兼容注册表
-完全匹配时，才允许执行该 fingerprint 对应的 `Config.Cipher` 固定结构或由相同 registry
-签名者锚定的有界、missing-only 扫描；未登记或签名失败时不读取目标进程内存。registry 中的真机证据引用必须是脱敏
-证据文件的 SHA-256。候选按进程实例和阶段隔离，只有对目标 Catalog 数据库首页 HMAC
+签名者证书 SHA-256、文件版本/build 和产品身份。只有这些字段与兼容注册表的单一精确条目
+完全匹配时，才允许执行该 fingerprint 对应的 `Config.Cipher` 固定结构，或由同一完整身份条目
+明确授权的有界、missing-only 扫描；未登记或签名失败时不读取目标进程内存。registry 只保存
+候选构建前即可确定的目标身份、架构、profiles 和真实 route 状态，正式真机 evidence 由外部
+promotion 以内容摘要绑定。候选按进程实例和阶段隔离，只有对目标 Catalog 数据库首页 HMAC
 验真的结果才能跨隔离边界；结构化逐库凭据保留对应的 opaque `process_instance_ids`，不会
-退化成 PID-only provenance。当前生产兼容注册表有意保持为空，
-因此 amd64/arm64 都不会在缺少真机证据时宣称 `Config.Cipher` 已受支持。
+退化成 PID-only provenance。当前 registry 仅包含一个完成本机 qualification 的精确 Windows
+amd64 目标；该目标如实标记为 `Config.Cipher` 已审核但无可用结构，并只授权精确身份绑定的
+memory fallback。其他 fingerprint 和 Windows ARM64 均不会继承这项能力。
 
-正式发行还受一层独立门禁约束：live evidence 中的 `provider_binary_sha256`（macOS 还包括 helper 摘要）必须与 GitHub attestation 验真的 `Release candidate` 完全一致。内容寻址 evidence 摘要保存在不参与候选编译的 `compatibility-evidence/promotions/<release-tag>.json`，从而消除原先的自引用哈希环；签名构建会校验 promotion、候选来源提交与受限源码 diff，并把 promotion 摘要注入发行二进制。当前生产 registry/evidence 仍为空，所以正式 release 继续按真实能力 fail closed。
+正式发行还受一层独立门禁约束：live evidence 中的 `provider_binary_sha256`（macOS 还包括 helper 摘要）必须与 GitHub attestation 验真的 `Release candidate` 完全一致。内容寻址 evidence 摘要保存在不参与候选编译的 `compatibility-evidence/promotions/<release-tag>.json`，从而消除原先的自引用哈希环；签名构建会校验 promotion、候选来源提交与受限源码 diff，并把 promotion 摘要注入发行二进制。当前只有本机 qualification-only evidence，没有正式 attestation、live evidence 和 promotion，因此正式 release 继续按真实能力 fail closed。
 
 macOS 的自动路径仍然受微信版本影响。4.1.x 的数据库密钥通常只在 CommonCrypto 调用的瞬间出现在寄存器中，开发构建可用机器验证后的通用符号路径做受控试验；签名发行构建只允许命中带内容寻址真机证据的精确 registry 条目。无论走动态断点还是静态扫描，候选都必须通过数据库首页验证，Provider 不会把零结果报成成功。
 
@@ -182,9 +184,9 @@ XOR 多候选只在第一名的证据数至少是第二名四倍时才形成候�
 }
 ```
 
-CLI 默认执行 `prepare -> observe -> finalize`。`prepare/observe` 不向客户端返回 secret；`finalize` 重新发现并核对同一 catalog 后才返回一次。`observe` 返回 `action_required` 时，daemon 保留同一 session（硬上限 15 分钟），但只有用户显式传入与 `next_action` 完全一致的 `--confirm-key-action` 才生成 action receipt；普通重跑和 `--allow-key-access` 都不代表动作确认。Shadow、关闭 SIP、恢复 SIP 不属于同 session receipt：旧 session 必须结束，CLI 只保存不含路径、秘密或授权的跨重启 checkpoint；重启后创建新 session 并重新验证机器状态，旧确认参数不得复用。`cancel`、客户端断开、完成、过期或 daemon 退出会清理 session。macOS daemon 由同包 companion helper 承载；helper 不可用时回退 one-shot，不静默改走主程序直接访问。内部入口为 `v-local-key-provider daemon serve <private-endpoint-file>`，endpoint 文件仅含随机认证令牌和回环地址，必须位于当前用户专属目录。
+CLI 默认执行 `prepare -> observe -> finalize`。`prepare/observe` 不向客户端返回 secret；`finalize` 重新发现并核对同一 catalog 后才返回一次。`observe` 返回 `action_required` 时，daemon 保留同一 session（硬上限 15 分钟），但只有用户显式传入与 `next_action` 完全一致的 `--confirm-key-action` 才生成 action receipt；普通重跑和 `--allow-key-access` 都不代表动作确认。Shadow、关闭 SIP、恢复 SIP 不属于同 session receipt：旧 session 必须结束，CLI 只保存不含路径、凭据或授权的跨重启 checkpoint；重启后创建新 session 并重新验证机器状态，旧确认参数不得复用。`cancel`、客户端断开、完成、过期或 daemon 退出会清理 session。macOS daemon 由同包 companion helper 承载；helper 不可用时回退 one-shot，不静默改走主程序直接访问。内部入口为 `v-local-key-provider daemon serve <private-endpoint-file>`，endpoint 文件仅含随机认证令牌和回环地址，必须位于当前用户专属目录。
 
-兼容 one-shot 的 `acquire` 仍通过 stdin/stdout 接受上面的 `workflow.operation=finalize` 请求。跨重启 checkpoint 已进入 SIP 恢复阶段时，CLI 使用一次性的 `workflow.operation=revalidate_security_posture`；该操作只读检查系统安全姿态，不启动 helper/hook、扫描进程或返回 credential，也不具备修改 SIP 的能力。只有 CLI 当次直接调用 Provider 得到的严格无秘密响应可以清除恢复 checkpoint，`--keys` 文件或历史响应不能替代机器复核。`database_keys` 只包含对当前 catalog 已完成首页 HMAC 的逐库 effective key；`catalog_entries` 同时返回逐库平台文件身份、大小、mtime、首页摘要、classification 和 profile。调用方必须在稳定复制前后以及 WAL 复制后复核这些证明，漂移时废弃本次结果。不要把 Provider 的原始 IPC/stdout 响应写入日志或交给 Agent。
+兼容 one-shot 的 `acquire` 仍通过 stdin/stdout 接受上面的 `workflow.operation=finalize` 请求。跨重启 checkpoint 已进入 SIP 恢复阶段时，CLI 使用一次性的 `workflow.operation=revalidate_security_posture`；该操作只读检查系统安全姿态，不启动 helper/hook、扫描进程或返回 credential，也不具备修改 SIP 的能力。只有 CLI 当次直接调用 Provider 得到的严格无凭据响应可以清除恢复 checkpoint，`--keys` 文件或历史响应不能替代机器复核。`database_keys` 只包含对当前 catalog 已完成首页 HMAC 的逐库 effective key；`catalog_entries` 同时返回逐库平台文件身份、大小、mtime、首页摘要、classification 和 profile。调用方必须在稳定复制前后以及 WAL 复制后复核这些证明，漂移时废弃本次结果。不要把 Provider 的原始 IPC/stdout 响应写入日志或交给 Agent。
 
 ### 关键诊断字段
 
@@ -284,7 +286,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Arch arm6
 
 正式 Windows 构建必须增加 `-Release -CertificateThumbprint <thumbprint>`。脚本在签名前把叶证书 SHA-256 注入二进制，签名后再核对同一身份并生成 `manifest.json`；普通构建不能据此宣称 Authenticode 已验证。
 
-完整的 Phase 0–5 自动化、真机和签名发布门禁见 [REGRESSION_TESTS.md](REGRESSION_TESTS.md)。Windows/macOS 真机回归必须由手动触发的专用 self-hosted runner 执行，普通 CI 和交叉构建不会升级真实设备支持状态。
+完整的自动化、真机和签名发布门禁见 [REGRESSION_TESTS.md](REGRESSION_TESTS.md)。Windows/macOS 真机回归必须由手动触发的专用 self-hosted runner 执行，普通 CI 和交叉构建不会升级真实设备支持状态。
 
 ## 许可与边界
 

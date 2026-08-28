@@ -107,3 +107,35 @@ func TestStoreRejectsDuplicateAccountAndExpiresRecords(t *testing.T) {
 		t.Fatalf("platform cleanup count = %d, want 2", closed)
 	}
 }
+
+func TestCloneResponsePreservesExplicitEmptyDiagnosticCollections(t *testing.T) {
+	response := &protocolmodel.Response{Diagnostics: diagnosticmodel.Diagnostics{
+		RequestedScopes:       []string{},
+		RoutePriority:         []string{},
+		BlockingReasons:       []string{},
+		CandidateSources:      []string{},
+		MissingDatabaseIDs:    []string{},
+		RoutesAttempted:       []string{},
+		StandardRouteEvidence: []string{},
+		WindowsRouteEvidence:  []string{},
+	}}
+	clone := CloneResponse(response)
+	if clone == nil {
+		t.Fatal("response clone 为空")
+	}
+	collections := map[string][]string{
+		"requested_scopes":        clone.Diagnostics.RequestedScopes,
+		"route_priority":          clone.Diagnostics.RoutePriority,
+		"blocking_reasons":        clone.Diagnostics.BlockingReasons,
+		"candidate_sources":       clone.Diagnostics.CandidateSources,
+		"missing_database_ids":    clone.Diagnostics.MissingDatabaseIDs,
+		"routes_attempted":        clone.Diagnostics.RoutesAttempted,
+		"standard_route_evidence": clone.Diagnostics.StandardRouteEvidence,
+		"windows_route_evidence":  clone.Diagnostics.WindowsRouteEvidence,
+	}
+	for name, values := range collections {
+		if values == nil || len(values) != 0 {
+			t.Fatalf("%s 未保留显式空数组: %#v", name, values)
+		}
+	}
+}

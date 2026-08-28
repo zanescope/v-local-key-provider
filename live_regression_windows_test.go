@@ -24,7 +24,7 @@ func liveExpectedBoolean(t *testing.T, name string) bool {
 	}
 }
 
-func TestPhase4WindowsLiveAcquisition(t *testing.T) {
+func TestWindowsLiveAcquisition(t *testing.T) {
 	processesBefore, err := windowsmodel.NewNativeDriver(windowsmodel.NativeRuntime{}).ListProcesses()
 	if err != nil {
 		t.Fatalf("cannot inventory Windows target processes before acquisition: %v", err)
@@ -116,7 +116,10 @@ func TestPhase4WindowsLiveAcquisition(t *testing.T) {
 			t.Fatal("Config.Cipher live route lacks an exact candidate-registry match")
 		}
 	case "windows_memory_fallback":
-		if !diag.StaticScanFallback || len(diag.FallbackStageCounts) == 0 || diag.PerProcessCollectorCount == 0 {
+		if expectedRegistry != windowsroute.RegistryRegisteredSupported ||
+			!containsLiveEvidence(diag.WindowsRouteEvidence, "registry_exact_match") ||
+			!containsLiveEvidence(diag.WindowsRouteEvidence, "registry_candidate_entry") ||
+			!diag.StaticScanFallback || len(diag.FallbackStageCounts) == 0 || diag.PerProcessCollectorCount == 0 {
 			t.Fatal("Windows fallback route lacks bounded stage or process-isolation evidence")
 		}
 	default:

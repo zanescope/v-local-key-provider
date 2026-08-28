@@ -34,6 +34,9 @@ func Run(config BuildConfig) int {
 	buildMode = config.Mode
 	releaseSignerSHA256 = config.ReleaseSignerSHA256
 	releasePromotionSHA256 = config.ReleasePromotionSHA256
+	if err := applyQualificationBootstrap(config.Mode); err != nil {
+		return writeError(err, 3)
+	}
 	return runMain()
 }
 
@@ -97,6 +100,9 @@ func runMain() int {
 	if len(os.Args) == 2 && (os.Args[1] == "--version" || os.Args[1] == "version") {
 		fmt.Fprintln(os.Stdout, version)
 		return 0
+	}
+	if handled, code := runQualificationCommand(os.Args, os.Stdin, os.Stdout); handled {
+		return code
 	}
 	if len(os.Args) == 2 && os.Args[1] == "daemon" {
 		if err := runAcquisitionDaemon(os.Stdin, os.Stdout); err != nil {

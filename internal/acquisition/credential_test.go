@@ -143,7 +143,7 @@ func TestMultiSaltProbeWithoutKDFCallEvidenceStaysPerDatabase(t *testing.T) {
 	}
 }
 
-func TestPhase4ConfigCipherPassphraseCannotBecomeAccountRoot(t *testing.T) {
+func TestConfigCipherPassphraseCannotBecomeAccountRoot(t *testing.T) {
 	passphraseHex := strings.Repeat("7b", 32)
 	first := encryptedV4PassphrasePage(t, passphraseHex, strings.Repeat("1c", 16))
 	first.Path = "first.db"

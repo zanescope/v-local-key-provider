@@ -3,12 +3,30 @@ package windows
 import (
 	"strings"
 	"testing"
+	"time"
 
 	acquisitionmodel "github.com/zanescope/v-local-key-provider/internal/acquisition"
 	catalogmodel "github.com/zanescope/v-local-key-provider/internal/catalog"
 	providercrypto "github.com/zanescope/v-local-key-provider/internal/crypto"
 	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
+
+func TestFallbackPassphraseBudgetIsIndependentFromScanStageWindow(t *testing.T) {
+	overall := workbudget.New(time.Now(), 60_000)
+	budget, ok := fallbackPassphraseBudget(overall, "structured_key_object")
+	if !ok || budget.Expired() {
+		t.Fatal("structured key-object KDF budget was not available")
+	}
+	deadline, limited := budget.Deadline()
+	if !limited || time.Until(deadline) < 19*time.Second {
+		t.Fatalf("structured key-object KDF did not receive an independent phase window: %v", time.Until(deadline))
+	}
+	for _, stage := range []string{"salt_neighborhood", "bounded_writable_heap", "bounded_readonly", "bounded_hex"} {
+		if _, enabled := fallbackPassphraseBudget(overall, stage); enabled {
+			t.Fatalf("stage %q unexpectedly enabled the structured-object KDF", stage)
+		}
+	}
+}
 
 type fixtureNativeDriver struct {
 	listed bool
@@ -128,6 +146,7 @@ func TestDriverOwnsOpenedHandleAndRunsOrderedFallbackStages(t *testing.T) {
 			Version: binary.Version, Build: binary.Build, ExecutableSHA256: binary.ExecutableSHA256,
 			BinarySignerSHA256: binary.BinarySignerSHA256, ProcessArchitecture: binary.ProcessArchitecture,
 			ProductIdentity: binary.ProductIdentity, RouteSupportState: "supported",
+			ConfigCipherSupportState: "verified", MemoryFallbackSupportState: "supported",
 			ValidatedProfiles: []string{"profile"}, Recipe: recipe,
 		}},
 		Policy: EvaluationPolicy{ProfileRegistered: func(profile string) bool { return profile == "profile" }},

@@ -14,7 +14,7 @@ import (
 	"testing"
 )
 
-func TestPhase3DarwinSourceDoesNotInferTargetArchitectureFromProviderBuild(t *testing.T) {
+func TestDarwinSourceDoesNotInferTargetArchitectureFromProviderBuild(t *testing.T) {
 	var combined strings.Builder
 	for _, path := range []string{
 		"internal/platform/darwin/evidence.go",
@@ -40,7 +40,7 @@ func TestPhase3DarwinSourceDoesNotInferTargetArchitectureFromProviderBuild(t *te
 	}
 }
 
-func TestPhase5DarwinSubprocessesUseCentralBoundedRunner(t *testing.T) {
+func TestDarwinSubprocessesUseCentralBoundedRunner(t *testing.T) {
 	for _, path := range []string{
 		"platform_darwin.go", "platform_helper_darwin.go", "runtime_trust_darwin.go",
 		"internal/platform/darwin/process_discovery.go", "internal/platform/darwin/native_process_darwin.go",
@@ -85,7 +85,7 @@ func TestPhase5DarwinSubprocessesUseCentralBoundedRunner(t *testing.T) {
 	}
 }
 
-func TestPhase3ProviderNeverExecutesASIPStateChange(t *testing.T) {
+func TestProviderNeverExecutesASIPStateChange(t *testing.T) {
 	paths, err := filepath.Glob("*.go")
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +149,7 @@ func completeDarwinRouteEvidence() darwinBinaryEvidence {
 	}
 }
 
-func TestPhase3ActualArchitectureParserRejectsUniversalBinaryDescriptions(t *testing.T) {
+func TestActualArchitectureParserRejectsUniversalBinaryDescriptions(t *testing.T) {
 	checks := map[string]string{
 		"arm64": "arm64", "ARM64E": "arm64", "x86_64": "amd64", "amd64": "amd64",
 		"Mach-O universal binary with 2 architectures: [x86_64] [arm64]": "unknown",
@@ -168,7 +168,7 @@ func TestPhase3ActualArchitectureParserRejectsUniversalBinaryDescriptions(t *tes
 	}
 }
 
-func TestPhase3CompatibilityRegistryRequiresAnExactEvidenceMatch(t *testing.T) {
+func TestCompatibilityRegistryRequiresAnExactEvidenceMatch(t *testing.T) {
 	evidence := completeDarwinRouteEvidence()
 	entry := darwinCompatibilityEntry{
 		Version: evidence.Version, Build: evidence.Build, ExecutableSHA256: evidence.ExecutableSHA256, SigningTeamID: evidence.SigningTeamID,
@@ -187,7 +187,7 @@ func TestPhase3CompatibilityRegistryRequiresAnExactEvidenceMatch(t *testing.T) {
 	}
 }
 
-func TestPhase3UnregisteredBuildGetsOnlyTheGenericSymbolRoute(t *testing.T) {
+func TestUnregisteredBuildGetsOnlyTheGenericSymbolRoute(t *testing.T) {
 	decision := evaluateDarwinRoute(completeDarwinRouteEvidence(), nil)
 	if decision.CompatibilityRegistryStatus != darwinroute.RegistryUnregistered || decision.StandardRouteStatus != darwinroute.StandardEligibleGeneric ||
 		!containsString(decision.Evidence, "generic_symbol_route_only") {
@@ -195,7 +195,7 @@ func TestPhase3UnregisteredBuildGetsOnlyTheGenericSymbolRoute(t *testing.T) {
 	}
 }
 
-func TestPhase5ReleaseRejectsUnregisteredDarwinBuild(t *testing.T) {
+func TestReleaseRejectsUnregisteredDarwinBuild(t *testing.T) {
 	previous := buildMode
 	buildMode = "release"
 	t.Cleanup(func() { buildMode = previous })
@@ -207,7 +207,7 @@ func TestPhase5ReleaseRejectsUnregisteredDarwinBuild(t *testing.T) {
 	}
 }
 
-func TestPhase5DarwinReleaseRegistryRequiresPromotionDigest(t *testing.T) {
+func TestDarwinReleaseRegistryRequiresPromotionDigest(t *testing.T) {
 	previousMode, previousPromotion := buildMode, releasePromotionSHA256
 	buildMode = "release"
 	releasePromotionSHA256 = ""
@@ -235,7 +235,7 @@ func TestPhase5DarwinReleaseRegistryRequiresPromotionDigest(t *testing.T) {
 	}
 }
 
-func TestPhase3ProcessAccessFailureUsesVerifiedSIPEvidence(t *testing.T) {
+func TestProcessAccessFailureUsesVerifiedSIPEvidence(t *testing.T) {
 	if got := darwinProcessAccessFailure("sip_enabled_verified"); got != "sip_enabled" {
 		t.Fatalf("verified enabled SIP was not exposed to final routing: %q", got)
 	}
@@ -246,7 +246,7 @@ func TestPhase3ProcessAccessFailureUsesVerifiedSIPEvidence(t *testing.T) {
 	}
 }
 
-func TestPhase3TrustedHelperDenialFeedsFinalRoutingBeforeFinalization(t *testing.T) {
+func TestTrustedHelperDenialFeedsFinalRoutingBeforeFinalization(t *testing.T) {
 	if got := darwinDeniedAccessError(true, "used", "sip_enabled_verified"); got != "sip_enabled" {
 		t.Fatalf("trusted helper denial did not preserve verified SIP evidence: %q", got)
 	}
@@ -258,7 +258,7 @@ func TestPhase3TrustedHelperDenialFeedsFinalRoutingBeforeFinalization(t *testing
 	}
 }
 
-func TestPhase3SIPDisabledRouteHasAnIndependentStableID(t *testing.T) {
+func TestSIPDisabledRouteHasAnIndependentStableID(t *testing.T) {
 	if got := darwinDynamicRouteID("arm64", "sip_disabled_verified"); got != "darwin_arm64_sip_disabled" {
 		t.Fatalf("SIP-disabled route ID = %q", got)
 	}
@@ -267,7 +267,7 @@ func TestPhase3SIPDisabledRouteHasAnIndependentStableID(t *testing.T) {
 	}
 }
 
-func TestPhase3InvalidSigningAndIncompleteEvidenceFailClosed(t *testing.T) {
+func TestInvalidSigningAndIncompleteEvidenceFailClosed(t *testing.T) {
 	evidence := completeDarwinRouteEvidence()
 	evidence.BinarySigningStatus = darwinroute.SigningInvalid
 	decision := evaluateDarwinRoute(evidence, nil)
@@ -282,7 +282,7 @@ func TestPhase3InvalidSigningAndIncompleteEvidenceFailClosed(t *testing.T) {
 	}
 }
 
-func TestPhase3SupportedRegistryEntryRequiresProfiles(t *testing.T) {
+func TestSupportedRegistryEntryRequiresProfiles(t *testing.T) {
 	evidence := completeDarwinRouteEvidence()
 	entry := darwinCompatibilityEntry{
 		Version: evidence.Version, Build: evidence.Build, ExecutableSHA256: evidence.ExecutableSHA256, SigningTeamID: evidence.SigningTeamID,
@@ -295,7 +295,7 @@ func TestPhase3SupportedRegistryEntryRequiresProfiles(t *testing.T) {
 	}
 }
 
-func TestPhase5DarwinRegistryRejectsUnsupportedRouteState(t *testing.T) {
+func TestDarwinRegistryRejectsUnsupportedRouteState(t *testing.T) {
 	evidence := completeDarwinRouteEvidence()
 	entry := darwinCompatibilityEntry{
 		Version: evidence.Version, Build: evidence.Build, ExecutableSHA256: evidence.ExecutableSHA256,

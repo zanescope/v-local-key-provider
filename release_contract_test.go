@@ -31,7 +31,7 @@ func requireReleaseContractFragments(t *testing.T, path string, fragments ...str
 	return text
 }
 
-func TestPhase5ReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *testing.T) {
+func TestReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *testing.T) {
 	release := requireReleaseContractFragments(t, ".github/workflows/release.yml",
 		"persist-credentials: false",
 		"arch: [amd64, arm64]",
@@ -107,7 +107,7 @@ func TestPhase5ReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates(t *test
 	)
 }
 
-func TestPhase4WindowsSourceHasNoProcessTerminationPath(t *testing.T) {
+func TestWindowsSourceHasNoProcessTerminationPath(t *testing.T) {
 	for _, path := range []string{
 		"windows_acquisition_windows.go", "windows_config_cipher_adapter.go", "runtime_trust_windows.go",
 		"internal/platform/windows/driver.go", "internal/platform/windows/process.go",
@@ -129,7 +129,7 @@ func TestPhase4WindowsSourceHasNoProcessTerminationPath(t *testing.T) {
 	}
 }
 
-func TestPhase0To5RegressionMatrixKeepsAutomatedAndLiveBoundaries(t *testing.T) {
+func TestRegressionMatrixKeepsAutomatedAndLiveBoundaries(t *testing.T) {
 	matrix := requireReleaseContractFragments(t, "REGRESSION_TESTS.md",
 		"P0-01", "P0-08",
 		"P1-01", "P1-08",
@@ -166,7 +166,7 @@ func TestPhase0To5RegressionMatrixKeepsAutomatedAndLiveBoundaries(t *testing.T) 
 	}
 }
 
-func TestPhase5ReleaseBuildMarkerIsExplicit(t *testing.T) {
+func TestReleaseBuildMarkerIsExplicit(t *testing.T) {
 	previous := buildMode
 	t.Cleanup(func() { buildMode = previous })
 
@@ -206,7 +206,7 @@ func TestReleaseCompatibilityEvidenceGate(t *testing.T) {
 	}
 }
 
-func TestPhase5ReleaseCompatibilityGateRequiresEligibleEntryPerTarget(t *testing.T) {
+func TestReleaseCompatibilityGateRequiresEligibleEntryPerTarget(t *testing.T) {
 	windowsEvidence := completeWindowsRouteEvidence()
 	windowsEntry := fixtureWindowsRegistryEntry(windowsEvidence)
 	darwinEvidence := completeDarwinRouteEvidence()
@@ -232,7 +232,7 @@ func TestPhase5ReleaseCompatibilityGateRequiresEligibleEntryPerTarget(t *testing
 	}
 }
 
-func TestPhase5ReleaseProfilesMustMatchExactly(t *testing.T) {
+func TestReleaseProfilesMustMatchExactly(t *testing.T) {
 	expected := []string{"profile-a", "profile-b"}
 	if !sameReleaseProfiles([]string{"profile-b", "profile-a"}, expected) {
 		t.Fatal("order-independent exact profile set was rejected")
@@ -290,7 +290,7 @@ func fixturePromotion(target releasePromotionTarget) releasePromotionManifest {
 	}
 }
 
-func TestPhase5ReleaseEvidenceArtifactIsContentAddressedAndExternallyPromoted(t *testing.T) {
+func TestReleaseEvidenceArtifactIsContentAddressedAndExternallyPromoted(t *testing.T) {
 	previousWindows := windowsCompatibilityRegistry
 	previousDarwin := darwinCompatibilityRegistry
 	t.Cleanup(func() {
@@ -368,7 +368,28 @@ func TestPhase5ReleaseEvidenceArtifactIsContentAddressedAndExternallyPromoted(t 
 	}
 }
 
-func TestPhase5DarwinPromotionBindsProviderHelperAndRoute(t *testing.T) {
+func TestWindowsReviewedNoStructureEvidenceRequiresFallbackRoute(t *testing.T) {
+	previousWindows := windowsCompatibilityRegistry
+	previousDarwin := darwinCompatibilityRegistry
+	t.Cleanup(func() {
+		windowsCompatibilityRegistry = previousWindows
+		darwinCompatibilityRegistry = previousDarwin
+	})
+	evidence := completeWindowsRouteEvidence()
+	entry := fixtureWindowsRegistryEntry(evidence)
+	entry.ConfigCipherSupportState = "reviewed_no_structure"
+	entry.Recipe = windowsConfigCipherRecipe{}
+	windowsCompatibilityRegistry = []windowsCompatibilityEntry{entry}
+	darwinCompatibilityRegistry = nil
+	projections := releaseEvidenceRegistryEntries("windows", "amd64")
+	if len(projections) != 1 ||
+		projections[0].RequiredConfigCipherRouteStatus != windowsroute.ConfigCipherReviewedNoStructure ||
+		len(projections[0].AllowedRoutes) != 1 || projections[0].AllowedRoutes[0] != "windows_memory_fallback" {
+		t.Fatalf("reviewed-no-structure entry projected a false Config.Cipher success route: %#v", projections)
+	}
+}
+
+func TestDarwinPromotionBindsProviderHelperAndRoute(t *testing.T) {
 	previousWindows := windowsCompatibilityRegistry
 	previousDarwin := darwinCompatibilityRegistry
 	t.Cleanup(func() {
@@ -418,7 +439,7 @@ func TestPhase5DarwinPromotionBindsProviderHelperAndRoute(t *testing.T) {
 	}
 }
 
-func TestPhase5RuntimeRoleBindsHelperWatchdogToExecutable(t *testing.T) {
+func TestRuntimeRoleBindsHelperWatchdogToExecutable(t *testing.T) {
 	previous := processArguments
 	t.Cleanup(func() { processArguments = previous })
 
@@ -442,13 +463,13 @@ func TestPhase5RuntimeRoleBindsHelperWatchdogToExecutable(t *testing.T) {
 	}
 }
 
-func TestPhase5CrashArtifactHardeningCanBeEnabled(t *testing.T) {
+func TestCrashArtifactHardeningCanBeEnabled(t *testing.T) {
 	if err := hardenSensitiveProcess(); err != nil {
 		t.Fatalf("sensitive process hardening failed: %v", err)
 	}
 }
 
-func TestPhase5SensitiveOutputBufferOverwritesSupersededBacking(t *testing.T) {
+func TestSensitiveOutputBufferOverwritesSupersededBacking(t *testing.T) {
 	buffer := sensitiveOutputBuffer{limit: 64}
 	if _, err := buffer.Write([]byte("phase5-secret")); err != nil {
 		t.Fatal(err)

@@ -1,6 +1,6 @@
-# Phase 0–5 回归测试矩阵
+# 回归测试矩阵
 
-本文件把 `KEY_ACQUISITION_AGENT_ORCHESTRATION.md` 第 19–21 节转换成可执行门禁。测试分为三层：
+测试分为三层：
 
 - `CI`：不依赖真实微信账号，所有提交必须通过；
 - `platform CI`：依赖 Windows 或 macOS ABI/权限语义，但不把 GitHub runner 当作真实微信验收；
@@ -8,22 +8,22 @@
 
 任何 `live/release` 行没有证据时，能力状态必须保持 `build_only`、`experimental` 或 `unverified`。单元测试和 mock 不能把该状态升级为 `real_device_verified`。
 
-## Phase 0：协议、Catalog 与验证器
+## 协议、Catalog 与验证器
 
 | ID | 回归点 | 自动化证据 |
 | --- | --- | --- |
 | P0-01 | v1 schema、未知字段、deadline 边界、未发布 v2 拒绝 | `TestDecodeRequest*`、`TestDecodeRequestV1*` |
 | P0-02 | Catalog 分类 encrypted/plaintext/truncated，WAL 不作为数据库 | `TestCatalogClassifiesEveryDatabaseWithoutTreatingWALAsDatabase` |
-| P0-03 | machine-keyed database ID 稳定，Catalog 绑定物理文件证明 | `TestCatalogIdentifiersAreStableForOneMachineKey`、`TestPhase0CatalogProofChangesWhenPhysicalFileChanges` |
+| P0-03 | machine-keyed database ID 稳定，Catalog 绑定物理文件证明 | `TestCatalogIdentifiersAreStableForOneMachineKey`、`TestCatalogProofChangesWhenPhysicalFileChanges` |
 | P0-04 | Unicode/case 路径规范化、symlink/reparse 与越界路径拒绝 | `TestCatalogPathKeyNormalizesUnicode`、平台 path-safety 测试、CLI snapshot 测试 |
 | P0-05 | raw key/passphrase 统一走 profile 首页 HMAC | `TestRawKeyRequiresFirstPageHMAC`、`TestPassphraseReturnsDatabaseSpecificEffectiveKey` |
 | P0-06 | 同 salt 仅复用派生，不复用物理文件验证 | `TestSameSaltFilesAreVerifiedIndependently` |
-| P0-07 | 同一 effective key 的多来源去重；不同 key 冲突 | `TestPhase0SameEffectiveKeyFromMultipleSourcesIsDeduplicated`、`TestDifferentKeysForSameProfileAreValidatorConflict` |
-| P0-08 | CLI 拒绝未知/重复 profile、伪造覆盖计数和 missing ID | CLI `TestPhase0ValidateBundle*` |
-| P0-09 | scope-qualified coverage、media-only `not_requested`、scope 回显及整体结果不变量 | Provider `TestOptionsFromRequestRejectsDuplicateScopes`、`internal/diagnostics.TestFinalizeKeepsCoverageOrthogonalAndScopeExplicit`、`TestCoverageDiagnosticsJSONUsesOnlyScopeQualifiedFields`；CLI `TestPhase0ValidateBundleRejectsAmbiguousOrContradictoryScopeCoverage`、`TestPhase0ValidateBundleRejectsRequestedScopeEchoMismatch` |
+| P0-07 | 同一 effective key 的多来源去重；不同 key 冲突 | `TestSameEffectiveKeyFromMultipleSourcesIsDeduplicated`、`TestDifferentKeysForSameProfileAreValidatorConflict` |
+| P0-08 | CLI 拒绝未知/重复 profile、伪造覆盖计数和 missing ID | CLI `TestValidateBundle*` |
+| P0-09 | scope-qualified coverage、media-only `not_requested`、scope 回显及整体结果不变量 | Provider `TestOptionsFromRequestRejectsDuplicateScopes`、`internal/diagnostics.TestFinalizeKeepsCoverageOrthogonalAndScopeExplicit`、`TestCoverageDiagnosticsJSONUsesOnlyScopeQualifiedFields`；CLI `TestValidateBundleRejectsAmbiguousOrContradictoryScopeCoverage`、`TestValidateBundleRejectsRequestedScopeEchoMismatch` |
 | P0-10 | ciphertext 无 authenticated profile marker 时不得伪造 `unsupported_profile`；所有已登记 profile 均可达 | `TestCatalogDoesNotPinEncryptedPagesToDefaultProfile`、`TestNonDefaultRegisteredProfileCanValidate`；Provider/CLI schema 不再包含死枚举或恒零计数器 |
 
-## Phase 1：结构化 Credential 与 CLI
+## 结构化凭据
 
 | ID | 回归点 | 自动化证据 |
 | --- | --- | --- |
@@ -36,22 +36,22 @@
 | P1-07 | partial generation 不覆盖更完整旧 generation | CLI snapshot `TestBuildPreventsCoverageRegressionAndKeepsPreviousSnapshot` |
 | P1-08 | plaintext 与 database/media coverage 独立 | Provider/CLI plaintext、media 和 deadline partial tests |
 
-## Phase 2：Daemon 与 Agent 状态机
+## Daemon 与状态机
 
 | ID | 回归点 | 自动化证据 |
 | --- | --- | --- |
-| P2-01 | 私有 endpoint、loopback、256-bit token、猜测令牌拒绝 | `TestAcquisitionDaemon*`、`TestPhase2DaemonRejectsGuessedTokenWithoutAffectingAuthenticatedSession`、平台 DACL/permission tests |
+| P2-01 | 私有 endpoint、loopback、256-bit token、猜测令牌拒绝 | `TestAcquisitionDaemon*`、`TestDaemonRejectsGuessedTokenWithoutAffectingAuthenticatedSession`、平台 DACL/permission tests |
 | P2-02 | 慢速未认证连接不阻塞已认证调用 | `TestAcquisitionDaemonDoesNotLetSlowUnauthenticatedClientBlockPing` |
 | P2-03 | prepare/observe/finalize，observe 不返回 secret，finalize 只返回一次 | `TestObserveKeepsSecretsInSessionUntilFinalize`、`TestFinalizeReturnsTerminalSessionResultWithoutRepeatingAcquisition` |
 | P2-04 | Catalog/session/process/route/stage 绑定与漂移拒绝 | `TestSessionRejectsCatalogDriftBeforeAcquisition`、receipt binding tests |
-| P2-05 | trigger/restart/relogin receipt 不能猜测、重放或盲循环 | `TestSessionRejectsDuplicateActionReceiptWithoutStateChange`、`TestPhase2ActionsHaveFiniteRetryBudgets` |
+| P2-05 | trigger/restart/relogin receipt 不能猜测、重放或盲循环 | `TestSessionRejectsDuplicateActionReceiptWithoutStateChange`、`TestActionsHaveFiniteRetryBudgets` |
 | P2-06 | `stop_and_report` 只保留已验真的 partial | `TestFinalizeWithoutActionReceiptReturnsVerifiedPartialAndEndsSession` 及 CLI daemon tests |
 | P2-07 | session hard limit、取消、断连和第二 prepare 冲突 | session/platform-session/daemon lifecycle tests |
 | P2-08 | missing-only 不重复扫描已完成数据库 | `TestMissingOnlyTargetsExcludesAlreadyVerifiedDatabase` |
 | P2-09 | mismatch、complete、action、permission、conflict、ambiguous、deadline、partial 的单一有序优先级 | `internal/diagnostics.TestFinalizeOutcomePriorityRegression`、`TestOutcomeRulePriorityAndDefaultAreStable`、session `stop_and_report` mismatch integration test |
 | P2-10 | Shadow/SIP 跨重启 checkpoint 不含授权、路径或 session；新 session 复验后才清除 | CLI `TestExternalCheckpoint*`、`TestSensitiveActionsAreNotDaemonResumable`、Provider `internal/diagnostics.TestFinalizeRequiresSIPRestoration` |
 
-## Phase 3：macOS 三模式
+## macOS 平台
 
 默认 macOS CI 必须运行 `go test ./...` 和 `go vet ./...`，覆盖：`internal/platform/darwin` 的 process/Mach driver、进程过滤和隔离扫描，以及 build-tagged hook 的实际架构寄存器、`CCCrypt*`/`CCKeyDerivationPBKDF` 双观察、rounds=256000 passphrase、rounds=2 raw key、wait-for 先装 hook、helper deadline/loopback、临时 secret 文件禁止和生命周期清理。
 
@@ -75,27 +75,27 @@
 真机命令由工作流设置 `V_LOCAL_KEY_PROVIDER_LIVE_*` 环境变量后执行：
 
 ```text
-go test -tags=live_regression -run '^TestPhase3MacOSLiveAcquisition$' -count=1 .
+go test -tags=live_regression -run '^TestMacOSLiveAcquisition$' -count=1 .
 ```
 
 每种 route 和动作阶段单独运行；测试只验证已准备好的机器状态，不会自动重启微信、替换应用或更改 SIP。
 
-## Phase 4：Windows
+## Windows 平台
 
 | ID | 回归点 | 证据 |
 | --- | --- | --- |
-| P4-01 | Weixin 根进程/子进程筛选与实际 x64/ARM64 架构 | `internal/platform/windows` tests，包括 `TestPhase4WindowsReportsActualCurrentProcessArchitecture` |
-| P4-02 | 已登记 4.1.x `Config.Cipher` fingerprint 主路径 | `TestPhase4WindowsRegistryRequiresExactMachineEvidence`、extractor 边界测试；专用 x64/ARM64 真机断言精确 registry route |
-| P4-03 | 未登记 fingerprint 或固定结构失效时安全 fallback | CLI `TestPhase4WindowsEvidenceCannotMisleadTheAgent`；专用真机分别断言 fallback route 与准确诊断 |
+| P4-01 | Weixin 根进程/子进程筛选与实际 x64/ARM64 架构 | `internal/platform/windows` tests，包括 `TestWindowsReportsActualCurrentProcessArchitecture` |
+| P4-02 | 已登记 4.1.x `Config.Cipher` fingerprint 主路径 | `TestWindowsRegistryRequiresExactMachineEvidence`、extractor 边界测试；专用 x64/ARM64 真机断言精确 registry route |
+| P4-03 | 未登记 fingerprint 或固定结构失效时安全 fallback | CLI `TestWindowsEvidenceCannotMisleadTheAgent`；专用真机分别断言 fallback route 与准确诊断 |
 | P4-04 | 多 Weixin/WeChat、多账号和部分进程 access denied | `TestMergeValidatedCollectorDoesNotMergeUnverifiedProcessCandidates`、Windows handle-path 分类与 opaque process provenance 测试；专用多进程测试账号 |
-| P4-05 | 定向 partial 后 missing-only fallback | `TestMissingOnlyTargetsExcludesAlreadyVerifiedDatabase`、`TestPhase4ConfigCipherPassphraseCannotBecomeAccountRoot`；真机计数证明已完成 ID 不被重复扫描/KDF/验证 |
+| P4-05 | 定向 partial 后 missing-only fallback | `TestMissingOnlyTargetsExcludesAlreadyVerifiedDatabase`、`TestConfigCipherPassphraseCannotBecomeAccountRoot`；真机计数证明已完成 ID 不被重复扫描/KDF/验证 |
 | P4-06 | 候选冲突、预算耗尽、单 session 有界结束 | CI 状态/预算测试 + 真机阶段计时 |
-| P4-07 | 默认不重启、不重登、不宽泛终止进程 | `TestPhase4WindowsSourceHasNoProcessTerminationPath` + 真机进程实例前后对比 |
+| P4-07 | 默认不重启、不重登、不宽泛终止进程 | `TestWindowsSourceHasNoProcessTerminationPath` + 真机进程实例前后对比 |
 
 真机入口：
 
 ```text
-go test -tags=live_regression -run '^TestPhase4WindowsLiveAcquisition$' -count=1 .
+go test -tags=live_regression -run '^TestWindowsLiveAcquisition$' -count=1 .
 ```
 
 Windows x64 与 Windows ARM64 必须分别保存证据；交叉编译不能替代 ARM64 真机。
@@ -103,11 +103,11 @@ Windows x64 与 Windows ARM64 必须分别保存证据；交叉编译不能替�
 `build/live/evidence.json`。该文件只含版本、摘要、稳定枚举、计数和耗时；不得含账号路径、
 数据库路径、进程内存、候选或密钥。
 
-## Phase 5：发布安全
+## 发布安全
 
 | ID | 回归点 | 自动化/发行证据 |
 | --- | --- | --- |
-| P5-01 | Windows Authenticode、编译期叶证书 SHA-256 绑定、离线 WinVerifyTrust、RFC3161 时间戳 | `scripts/build.ps1 -Release` 与 `TestPhase5ReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates` |
+| P5-01 | Windows Authenticode、编译期叶证书 SHA-256 绑定、离线 WinVerifyTrust、RFC3161 时间戳 | `scripts/build.ps1 -Release` 与 `TestReleaseWorkflowKeepsSigningNotarizationAndProvenanceGates` |
 | P5-02 | macOS Provider/helper 固定 identifier、Hardened Runtime、Developer ID/Team ID、notarization、DMG staple、无 warning/error 日志、Gatekeeper | signed release workflow contract test |
 | P5-03 | GitHub artifact attestation 与 npm Trusted Publishing | signed release workflow contract test |
 | P5-04 | 发布资产集合与 checksum 一一绑定 | `npm run verify-release`；只有正式构建资产生成后运行 |
@@ -115,8 +115,8 @@ Windows x64 与 Windows ARM64 必须分别保存证据；交叉编译不能替�
 | P5-06 | 固定当前用户安装路径及无 symlink/junction 祖先；发行版拒绝路径 override，开发绕过需路径 + development + allow 三重显式授权 | CLI status tests、npm tests 与 macOS helper override test |
 | P5-07 | endpoint/resume/diagnostics/普通日志不含 secret；Unix core=0、Windows WER NOHEAP 与 excluded buffers | daemon/session/release contract tests；发布真机另做 crash/core-dump 检查 |
 | P5-08 | 干净机器安装、版本不匹配、Keychain/Credential Manager、卸载清理 | signed npm 包在隔离 VM 执行 CLI `references/macos-acceptance.md` 和对应 Windows 清单 |
-| P5-09 | 依据真机 timing/count 校准预算 | 汇总 `phase_timings_ms` 与候选计数；校准变更必须重新运行 Phase 0–4 |
-| P5-10 | 每个发行架构必须有精确 registry 候选条目及外部 promotion 绑定的内容寻址真机证据；真机 workflow 必须下载并 attestation 验证指定候选，空 registry/promotion、重建候选、重复 evidence、错摘要、错来源/身份/架构/profile 均阻止签名构建 | `TestReleaseCompatibilityEvidenceGate`、`TestPhase5ReleaseEvidenceArtifactIsContentAddressedAndExternallyPromoted`、`TestPhase5DarwinPromotionBindsProviderHelperAndRoute`、`candidate-manifest.test.js`；候选/live/signed-release workflow contract tests |
+| P5-09 | 依据真机 timing/count 校准预算 | 汇总 `phase_timings_ms` 与候选计数；校准变更必须重新运行全部回归 |
+| P5-10 | 每个发行架构必须有精确 registry 候选条目及外部 promotion 绑定的内容寻址真机证据；真机 workflow 必须下载并 attestation 验证指定候选，空 registry/promotion、重建候选、重复 evidence、错摘要、错来源/身份/架构/profile 均阻止签名构建 | `TestReleaseCompatibilityEvidenceGate`、`TestReleaseEvidenceArtifactIsContentAddressedAndExternallyPromoted`、`TestDarwinPromotionBindsProviderHelperAndRoute`、`candidate-manifest.test.js`；候选/live/signed-release workflow contract tests |
 
 ## 常规命令
 

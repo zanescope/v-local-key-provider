@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func TestPhase4WindowsReportsActualCurrentProcessArchitecture(t *testing.T) {
+func TestWindowsReportsActualCurrentProcessArchitecture(t *testing.T) {
 	handleValue, _, _ := procOpenProcess.Call(processQueryInformation, 0, uintptr(os.Getpid()))
 	if handleValue == 0 {
 		t.Skip("current process architecture cannot be queried with the available token")

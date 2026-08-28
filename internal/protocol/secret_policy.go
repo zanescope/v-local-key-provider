@@ -32,7 +32,7 @@ func HasCompleteRequestedCoverage(diag diagnosticmodel.Diagnostics) bool {
 	return true
 }
 
-// DiagnosticsPermitSecrets 是 one-shot 与 session 响应共享的唯一秘密发布决策。
+// DiagnosticsPermitSecrets 是 one-shot 与 session 响应共享的唯一凭据发布策略。
 func DiagnosticsPermitSecrets(diag diagnosticmodel.Diagnostics) bool {
 	if diag.TargetBindingStatus == "mismatch" || diag.SessionAccountStatus == "known_other" {
 		return false

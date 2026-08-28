@@ -7,6 +7,7 @@ import (
 	acquisitionmodel "github.com/zanescope/v-local-key-provider/internal/acquisition"
 	diagnosticmodel "github.com/zanescope/v-local-key-provider/internal/diagnostics"
 	protocolmodel "github.com/zanescope/v-local-key-provider/internal/protocol"
+	"github.com/zanescope/v-local-key-provider/internal/workbudget"
 )
 
 // DriverRuntime 包含 Windows 采集 driver 所需且归进程持有的策略。原生进程访问隔离在
@@ -84,6 +85,14 @@ func chooseConfigStatus(current, next string) string {
 		return next
 	}
 	return current
+}
+
+func fallbackPassphraseBudget(overall workbudget.Budget, stage string) (workbudget.Budget, bool) {
+	if stage != "structured_key_object" {
+		return workbudget.Budget{}, false
+	}
+	// 结构化对象扫描与高成本 KDF 各自受阶段上限约束，KDF 不继承已经消耗的扫描窗口。
+	return overall.CappedFor(20 * time.Second), true
 }
 
 type openedProcess struct {
@@ -185,8 +194,8 @@ func (driver *Driver) Acquire(targets acquisitionmodel.Targets, media acquisitio
 			identityRejectedCount++
 			continue
 		}
-		if !FallbackIdentityEligible(process.Binary, driver.runtime.Registry, driver.runtime.Policy) {
-			diag.WindowsRouteEvidence = appendUnique(diag.WindowsRouteEvidence, "process_publisher_not_registry_anchored")
+		if !MemoryAccessIdentityEligible(process.Binary, driver.runtime.Registry, driver.runtime.Policy) {
+			diag.WindowsRouteEvidence = appendUnique(diag.WindowsRouteEvidence, "process_identity_not_exact_registry_match")
 			diag.AccessDeniedCount++
 			identityRejectedCount++
 			continue
@@ -313,6 +322,10 @@ func (driver *Driver) Acquire(targets acquisitionmodel.Targets, media acquisitio
 				diag.ScanLimited = true
 				break
 			}
+			if process.decision.EntryIndex < 0 || process.decision.EntryIndex >= len(driver.runtime.Registry) ||
+				driver.runtime.Registry[process.decision.EntryIndex].MemoryFallbackSupportState != "supported" {
+				continue
+			}
 			processBudget := request.Budget.CappedFor(stage.Window)
 			keys, _ := aggregate.DatabaseKeys(targets)
 			missing := acquisitionmodel.MissingTargets(targets, keys)
@@ -335,8 +348,9 @@ func (driver *Driver) Acquire(targets acquisitionmodel.Targets, media acquisitio
 				limit = remaining
 			}
 			scanned, limited := driver.runtime.Native.ScanStage(process.handle, isolated, limit, stage.Name, processBudget)
-			if missing.Count > 0 && !isolated.HasAllDatabaseCandidates() {
-				isolated.ResolveDatabasePassphrase(processBudget)
+			passphraseBudget, resolvePassphrase := fallbackPassphraseBudget(request.Budget, stage.Name)
+			if resolvePassphrase && missing.Count > 0 && !isolated.HasAllDatabaseCandidates() {
+				isolated.ResolveDatabasePassphrase(passphraseBudget)
 			}
 			diag.FallbackCandidateCount += isolated.CandidateObservationCount()
 			diag.FallbackStageCounts[stage.Name]++
