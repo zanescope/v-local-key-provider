@@ -98,7 +98,8 @@ go test -tags=live_regression -run '^TestMacOSLiveAcquisition$' -count=1 .
 go test -tags=live_regression -run '^TestWindowsLiveAcquisition$' -count=1 .
 ```
 
-Windows x64 与 Windows ARM64 必须分别保存证据；交叉编译不能替代 ARM64 真机。
+Windows ARM64 不属于首发发布目标；现有交叉编译和架构隔离测试只用于防止未来适配退化，
+不得生成或暗示首发支持。未来启用前必须与 Windows x64 分别保存证据，交叉编译不能替代 ARM64 真机。
 当 `live-regression.yml` 尚未进入默认分支、因而没有可直接 dispatch 的 workflow ID 时，只能通过
 默认分支已经注册的 `Audit gates` 的 `live_regression_request` 调用同一 reusable workflow。该 JSON
 只允许携带候选来源、预期枚举和专用 runner label，不得携带账号或数据库路径。

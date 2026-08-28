@@ -34,10 +34,6 @@ jobs:
             runner: windows-latest
             platform: windows
             arch: amd64
-          - name: windows-arm64
-            runner: windows-latest
-            platform: windows
-            arch: arm64
           - name: darwin-amd64
             runner: macos-15-intel
             platform: darwin
@@ -226,6 +222,7 @@ jobs:
             '' \
             '- 二进制 build mode 为 candidate。' \
             '- 不包含 Authenticode、Developer ID 或 Apple notarization 声明。' \
+            '- 首发资产仅包含 Windows amd64、macOS amd64 和 macOS arm64。' \
             '- 不构成 formal release、promotion 或 latest 支持声明。' \
             '- 所有资产均绑定本次 candidate 源码和 GitHub artifact attestation。' > "${notes}"
           gh release create "${PREVIEW_TAG}" candidate/dist/* candidate/npm/*.tgz \

@@ -32,14 +32,18 @@ function contentAddressedEvidence(root, value) {
   return output;
 }
 
-test('候选清单精确绑定四个平台资产、来源提交和工作流运行', (t) => {
+test('候选清单精确绑定三个首发目标、来源提交和工作流运行', (t) => {
   const { root, dist } = fixture(t);
   const source = 'a'.repeat(40);
   const manifestPath = path.join(dist, 'candidate-manifest.json');
   const manifest = candidate.createCandidateManifest(dist, manifestPath, source, '12345');
-  assert.equal(manifest.targets.length, 4);
+  assert.equal(manifest.targets.length, 3);
   const verified = candidate.verifyCandidateManifest(manifestPath, dist, 'darwin', 'arm64', source, '12345');
   assert.equal(verified.selected.helper_artifact_name, 'v-local-key-provider-helper-darwin-arm64');
+  assert.throws(
+    () => candidate.verifyCandidateManifest(manifestPath, dist, 'windows', 'arm64', source, '12345'),
+    /candidate target windows\/arm64 is unavailable/,
+  );
 
   fs.appendFileSync(path.join(dist, verified.selected.provider_artifact_name), 'tampered');
   assert.throws(
@@ -68,7 +72,7 @@ test('promotion 清单只接受同一 attested 候选集合的内容寻址证据
   }));
   const promotionPath = path.join(root, 'promotions', 'v-test.json');
   const promotion = candidate.createPromotion(manifestPath, promotionPath, evidencePaths);
-  assert.equal(promotion.targets.length, 4);
+  assert.equal(promotion.targets.length, 3);
   assert.ok(promotion.targets.every((target) => target.evidence_sha256.length === 1));
   candidate.validateManifest(JSON.parse(fs.readFileSync(promotionPath, 'utf8')), true);
   assert.deepEqual(candidate.promotionMetadata(promotionPath), { sourceCommit: source, runID: '98765' });

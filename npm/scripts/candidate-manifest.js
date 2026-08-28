@@ -12,7 +12,6 @@ const attestationWorkflow = 'zanescope/v-local-key-provider/.github/workflows/re
 
 const expectedTargets = Object.freeze([
   { platform: 'windows', architecture: 'amd64', provider_artifact_name: 'v-local-key-provider-windows-amd64.exe' },
-  { platform: 'windows', architecture: 'arm64', provider_artifact_name: 'v-local-key-provider-windows-arm64.exe' },
   {
     platform: 'darwin', architecture: 'amd64',
     provider_artifact_name: 'v-local-key-provider-darwin-amd64',
