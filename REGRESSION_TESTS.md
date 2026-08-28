@@ -108,6 +108,11 @@ Windows x64 与 Windows ARM64 必须分别保存证据；交叉编译不能替�
 该文件只含版本、摘要、稳定枚举、计数和耗时，并显式声明 secret、路径、账号身份和聊天内容
 均未包含；不得含账号路径、数据库路径、进程内存、候选或密钥。
 
+若采集或正式证据门禁失败，工作流可以额外上传 `build/live/diagnostic.json`，但该文件必须是
+schema v1、`qualification_only=true`、`formal_release_evidence=false` 且 `promotion_verified=false`。
+诊断只允许固定枚举、阶段计时、字节数和计数，不得包含目标摘要、版本、路径、账号身份、
+原始 Provider 响应、密钥候选或密钥；正式 evidence 解码器必须拒绝该诊断，promotion 也不得引用它。
+
 ## 发布安全
 
 | ID | 回归点 | 自动化/发行证据 |

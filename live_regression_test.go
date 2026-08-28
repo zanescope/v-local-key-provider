@@ -22,6 +22,267 @@ import (
 
 const liveRegressionConsent = "I_HAVE_EXPLICIT_AUTHORIZATION"
 
+const liveDiagnosticKind = "live_regression_diagnostic"
+
+type liveCandidateProvenance struct {
+	SourceCommit        string
+	WorkflowRunID       string
+	AttestationWorkflow string
+	AttestationVerified bool
+}
+
+type liveDiagnosticArtifact struct {
+	SchemaVersion                int              `json:"schema_version"`
+	ArtifactKind                 string           `json:"artifact_kind"`
+	QualificationOnly            bool             `json:"qualification_only"`
+	FormalReleaseEvidence        bool             `json:"formal_release_evidence"`
+	CandidateSourceCommit        string           `json:"candidate_source_commit"`
+	CandidateWorkflowRunID       string           `json:"candidate_workflow_run_id"`
+	CandidateAttestationWorkflow string           `json:"candidate_attestation_workflow"`
+	CandidateAttestationVerified bool             `json:"candidate_attestation_verified"`
+	PromotionVerified            bool             `json:"promotion_verified"`
+	RecordedAt                   string           `json:"recorded_at"`
+	RunnerOS                     string           `json:"runner_os"`
+	RunnerArch                   string           `json:"runner_arch"`
+	ResultCode                   string           `json:"result_code"`
+	WorkflowStatus               string           `json:"workflow_status"`
+	NextAction                   string           `json:"next_action"`
+	RequestedScopes              []string         `json:"requested_scopes"`
+	DatabaseCoverageStatus       string           `json:"database_coverage_status"`
+	MediaCoverageStatus          string           `json:"media_coverage_status"`
+	RouteSelected                string           `json:"route_selected"`
+	RoutesAttempted              []string         `json:"routes_attempted"`
+	CompatibilityRegistryStatus  string           `json:"compatibility_registry_status"`
+	ConfigCipherRouteStatus      string           `json:"config_cipher_route_status"`
+	TargetBindingStatus          string           `json:"target_binding_status"`
+	ProcessArchitecture          string           `json:"process_architecture"`
+	ProcessArchitectureStatus    string           `json:"process_architecture_status"`
+	ProcessInventoryStable       *bool            `json:"process_inventory_stable"`
+	ProcessCount                 int              `json:"process_count"`
+	SelectedProcessCount         int              `json:"selected_process_count"`
+	TargetBoundProcessCount      int              `json:"target_bound_process_count"`
+	OtherAccountProcessCount     int              `json:"other_account_process_count"`
+	UnknownAccountProcessCount   int              `json:"unknown_account_process_count"`
+	OpenedProcessCount           int              `json:"opened_process_count"`
+	AccessDeniedCount            int              `json:"access_denied_count"`
+	PerProcessCollectorCount     int              `json:"per_process_collector_count"`
+	DatabaseCount                int              `json:"database_count"`
+	RequiredDatabaseCount        int              `json:"required_database_count"`
+	PlaintextDatabaseCount       int              `json:"plaintext_database_count"`
+	MatchedDatabaseCount         int              `json:"matched_database_count"`
+	MissingDatabaseCount         int              `json:"missing_database_count"`
+	ConfigCipherStructureCount   int              `json:"config_cipher_structure_count"`
+	ConfigCipherInvalidCount     int              `json:"config_cipher_invalid_structure_count"`
+	ConfigCipherCandidateCount   int              `json:"config_cipher_candidate_count"`
+	ConfigCipherVerifiedCount    int              `json:"config_cipher_verified_candidate_count"`
+	FallbackCandidateCount       int              `json:"fallback_candidate_count"`
+	FallbackStageCounts          map[string]int   `json:"fallback_stage_counts"`
+	StaticScanFallback           bool             `json:"static_scan_fallback"`
+	KDFBudgetExhausted           bool             `json:"kdf_budget_exhausted"`
+	ScannedBytes                 uint64           `json:"scanned_bytes"`
+	ScanLimited                  bool             `json:"scan_limited"`
+	BudgetExhausted              bool             `json:"budget_exhausted"`
+	PhaseTimingsMS               map[string]int64 `json:"phase_timings_ms"`
+	SecretsIncluded              bool             `json:"secrets_included"`
+	PathsIncluded                bool             `json:"paths_included"`
+	AccountIdentityIncluded      bool             `json:"account_identity_included"`
+	ChatContentIncluded          bool             `json:"chat_content_included"`
+	RawProviderResponseIncluded  bool             `json:"raw_provider_response_included"`
+}
+
+func liveDiagnosticProvenance() (liveCandidateProvenance, error) {
+	provenance := liveCandidateProvenance{
+		SourceCommit:        strings.TrimSpace(os.Getenv("V_LOCAL_KEY_PROVIDER_LIVE_CANDIDATE_SOURCE_COMMIT")),
+		WorkflowRunID:       strings.TrimSpace(os.Getenv("V_LOCAL_KEY_PROVIDER_LIVE_CANDIDATE_RUN_ID")),
+		AttestationWorkflow: strings.TrimSpace(os.Getenv("V_LOCAL_KEY_PROVIDER_LIVE_CANDIDATE_ATTESTATION_WORKFLOW")),
+		AttestationVerified: strings.TrimSpace(os.Getenv("V_LOCAL_KEY_PROVIDER_LIVE_CANDIDATE_ATTESTATION_VERIFIED")) == "true",
+	}
+	if !validReleaseSourceCommit(provenance.SourceCommit) || !validReleaseRunID(provenance.WorkflowRunID) ||
+		provenance.AttestationWorkflow != releaseCandidateAttestationWorkflow || !provenance.AttestationVerified {
+		return liveCandidateProvenance{}, errors.New("live diagnostic candidate provenance is incomplete or untrusted")
+	}
+	return provenance, nil
+}
+
+func validLiveDiagnosticToken(value string, allowEmpty bool) bool {
+	if value == "" {
+		return allowEmpty
+	}
+	if len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if (character < 'a' || character > 'z') && (character < '0' || character > '9') && character != '_' {
+			return false
+		}
+	}
+	return true
+}
+
+func copyLiveDiagnosticTokens(values []string) ([]string, error) {
+	if len(values) > 16 {
+		return nil, errors.New("live diagnostic token list is too large")
+	}
+	result := make([]string, len(values))
+	for index, value := range values {
+		if !validLiveDiagnosticToken(value, false) {
+			return nil, errors.New("live diagnostic contains an unsafe token")
+		}
+		result[index] = value
+	}
+	return result, nil
+}
+
+func copyLiveDiagnosticTimings(values map[string]int64) (map[string]int64, error) {
+	allowed := map[string]bool{
+		"target_database_discovery": true,
+		"media_discovery":           true,
+		"config_cipher":             true,
+		"memory_scan":               true,
+		"primary_acquire":           true,
+		"catalog_refresh":           true,
+		"total":                     true,
+	}
+	result := make(map[string]int64, len(values))
+	for name, elapsed := range values {
+		if !allowed[name] || elapsed < 0 || elapsed > maxBudgetMilliseconds {
+			return nil, errors.New("live diagnostic contains an invalid phase timing")
+		}
+		result[name] = elapsed
+	}
+	return result, nil
+}
+
+func copyLiveDiagnosticStageCounts(values map[string]int) (map[string]int, error) {
+	allowed := map[string]bool{
+		"structured_key_object": true,
+		"salt_neighborhood":     true,
+		"bounded_writable_heap": true,
+		"bounded_readonly":      true,
+		"bounded_hex":           true,
+	}
+	result := make(map[string]int, len(values))
+	for name, count := range values {
+		if !allowed[name] || count < 0 || count > 1024 {
+			return nil, errors.New("live diagnostic contains an invalid fallback count")
+		}
+		result[name] = count
+	}
+	return result, nil
+}
+
+func makeLiveDiagnosticArtifact(
+	result response,
+	processInventoryStable *bool,
+	provenance liveCandidateProvenance,
+	recordedAt time.Time,
+) (liveDiagnosticArtifact, error) {
+	if !validReleaseSourceCommit(provenance.SourceCommit) || !validReleaseRunID(provenance.WorkflowRunID) ||
+		provenance.AttestationWorkflow != releaseCandidateAttestationWorkflow || !provenance.AttestationVerified {
+		return liveDiagnosticArtifact{}, errors.New("live diagnostic candidate provenance is incomplete or untrusted")
+	}
+	diag := result.Diagnostics
+	for _, value := range []string{
+		diag.ResultCode, diag.WorkflowStatus, diag.NextAction, diag.DatabaseCoverageStatus,
+		diag.MediaCoverageStatus, diag.RouteSelected, diag.CompatibilityRegistryStatus,
+		diag.ConfigCipherRouteStatus, diag.TargetBindingStatus, diag.ProcessArchitecture,
+		diag.ProcessArchitectureStatus,
+	} {
+		if !validLiveDiagnosticToken(value, true) {
+			return liveDiagnosticArtifact{}, errors.New("live diagnostic contains an unsafe status")
+		}
+	}
+	scopes, err := copyLiveDiagnosticTokens(diag.RequestedScopes)
+	if err != nil {
+		return liveDiagnosticArtifact{}, err
+	}
+	routes, err := copyLiveDiagnosticTokens(diag.RoutesAttempted)
+	if err != nil {
+		return liveDiagnosticArtifact{}, err
+	}
+	timings, err := copyLiveDiagnosticTimings(diag.PhaseTimingsMS)
+	if err != nil {
+		return liveDiagnosticArtifact{}, err
+	}
+	stages, err := copyLiveDiagnosticStageCounts(diag.FallbackStageCounts)
+	if err != nil {
+		return liveDiagnosticArtifact{}, err
+	}
+	var stable *bool
+	if processInventoryStable != nil {
+		value := *processInventoryStable
+		stable = &value
+	}
+	return liveDiagnosticArtifact{
+		SchemaVersion: 1, ArtifactKind: liveDiagnosticKind,
+		QualificationOnly: true, FormalReleaseEvidence: false,
+		CandidateSourceCommit: provenance.SourceCommit, CandidateWorkflowRunID: provenance.WorkflowRunID,
+		CandidateAttestationWorkflow: provenance.AttestationWorkflow,
+		CandidateAttestationVerified: provenance.AttestationVerified, PromotionVerified: false,
+		RecordedAt: recordedAt.UTC().Format(time.RFC3339Nano), RunnerOS: runtime.GOOS, RunnerArch: runtime.GOARCH,
+		ResultCode: diag.ResultCode, WorkflowStatus: diag.WorkflowStatus, NextAction: diag.NextAction,
+		RequestedScopes: scopes, DatabaseCoverageStatus: diag.DatabaseCoverageStatus,
+		MediaCoverageStatus: diag.MediaCoverageStatus, RouteSelected: diag.RouteSelected, RoutesAttempted: routes,
+		CompatibilityRegistryStatus: diag.CompatibilityRegistryStatus,
+		ConfigCipherRouteStatus:     diag.ConfigCipherRouteStatus, TargetBindingStatus: diag.TargetBindingStatus,
+		ProcessArchitecture: diag.ProcessArchitecture, ProcessArchitectureStatus: diag.ProcessArchitectureStatus,
+		ProcessInventoryStable: stable, ProcessCount: diag.ProcessCount, SelectedProcessCount: diag.SelectedProcessCount,
+		TargetBoundProcessCount: diag.TargetBoundProcessCount, OtherAccountProcessCount: diag.OtherAccountProcessCount,
+		UnknownAccountProcessCount: diag.UnknownAccountProcessCount, OpenedProcessCount: diag.OpenedProcessCount,
+		AccessDeniedCount: diag.AccessDeniedCount, PerProcessCollectorCount: diag.PerProcessCollectorCount,
+		DatabaseCount: diag.DatabaseCount, RequiredDatabaseCount: diag.RequiredDatabaseCount,
+		PlaintextDatabaseCount: diag.PlaintextDatabaseCount, MatchedDatabaseCount: diag.MatchedDatabaseCount,
+		MissingDatabaseCount: diag.MissingDatabaseCount, ConfigCipherStructureCount: diag.ConfigCipherStructureCount,
+		ConfigCipherInvalidCount: diag.ConfigCipherInvalidCount, ConfigCipherCandidateCount: diag.ConfigCipherCandidateCount,
+		ConfigCipherVerifiedCount: diag.ConfigCipherVerifiedCount, FallbackCandidateCount: diag.FallbackCandidateCount,
+		FallbackStageCounts: stages, StaticScanFallback: diag.StaticScanFallback,
+		KDFBudgetExhausted: diag.KDFBudgetExhausted, ScannedBytes: diag.ScannedBytes,
+		ScanLimited: diag.ScanLimited, BudgetExhausted: diag.BudgetExhausted, PhaseTimingsMS: timings,
+		SecretsIncluded: false, PathsIncluded: false, AccountIdentityIncluded: false,
+		ChatContentIncluded: false, RawProviderResponseIncluded: false,
+	}, nil
+}
+
+func writeLiveDiagnostic(t *testing.T, result response, processInventoryStable *bool) {
+	t.Helper()
+	path := strings.TrimSpace(os.Getenv("V_LOCAL_KEY_PROVIDER_LIVE_DIAGNOSTIC_PATH"))
+	if path == "" {
+		return
+	}
+	provenance, err := liveDiagnosticProvenance()
+	if err != nil {
+		t.Fatal("live diagnostic candidate provenance is incomplete or untrusted")
+	}
+	artifact, err := makeLiveDiagnosticArtifact(result, processInventoryStable, provenance, time.Now())
+	if err != nil {
+		t.Fatal("live diagnostic contains unsafe data")
+	}
+	payload, err := json.MarshalIndent(artifact, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	absolute, err := filepath.Abs(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(absolute), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	payload = append(payload, '\n')
+	defer wipeLiveBytes(payload)
+	file, err := os.OpenFile(absolute, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		t.Fatal("live diagnostic output path is unsafe or already exists")
+	}
+	if _, err := file.Write(payload); err != nil {
+		_ = file.Close()
+		t.Fatal("live diagnostic write failed")
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal("live diagnostic close failed")
+	}
+}
+
 func liveRequiredEnvironment(t *testing.T, name string) string {
 	t.Helper()
 	value := strings.TrimSpace(os.Getenv(name))
@@ -360,6 +621,7 @@ func TestMacOSLiveAcquisition(t *testing.T) {
 	}
 	result := runLiveAcquisition(t)
 	defer clearLiveResponse(&result)
+	writeLiveDiagnostic(t, result, nil)
 	assertLiveAcquisition(t, result)
 	diag := result.Diagnostics
 	if diag.ProcessArchitectureStatus != darwinroute.ArchitectureVerified ||
@@ -378,4 +640,86 @@ func TestMacOSLiveAcquisition(t *testing.T) {
 		t.Fatal("Darwin live route is not bound to the exact candidate registry entry")
 	}
 	writeLiveEvidence(t, result, nil)
+}
+
+func TestLiveDiagnosticIsRedactedAndReleaseIneligible(t *testing.T) {
+	stable := true
+	result := response{
+		DatabaseKeys: map[string]string{"private-database-path": "database-secret-marker"},
+		ImageKeys:    &imageKeys{AES: "media-secret-marker", XOR: 42},
+		Diagnostics: diagnostics{
+			ResultCode: "deadline_exhausted", WorkflowStatus: "terminal", NextAction: "stop_and_report",
+			RequestedScopes: []string{"database", "media"}, DatabaseCoverageStatus: "none",
+			MediaCoverageStatus: "none", RouteSelected: "windows_memory_fallback",
+			RoutesAttempted:             []string{"windows_memory_fallback"},
+			CompatibilityRegistryStatus: "registered_supported", ConfigCipherRouteStatus: "reviewed_no_structure",
+			TargetBindingStatus: "path_verified", ProcessArchitecture: "amd64",
+			ProcessArchitectureStatus: "verified_running_process", ProcessCount: 5,
+			SelectedProcessCount: 5, TargetBoundProcessCount: 1, UnknownAccountProcessCount: 4,
+			OpenedProcessCount: 5, PerProcessCollectorCount: 9, DatabaseCount: 19,
+			RequiredDatabaseCount: 19, MissingDatabaseCount: 19, StaticScanFallback: true,
+			KDFBudgetExhausted: true, ScannedBytes: 1024, ScanLimited: true, BudgetExhausted: true,
+			FallbackStageCounts: map[string]int{"structured_key_object": 5, "salt_neighborhood": 4},
+			PhaseTimingsMS: map[string]int64{
+				"target_database_discovery": 10, "media_discovery": 20,
+				"config_cipher": 0, "memory_scan": 180000, "primary_acquire": 180000, "total": 180030,
+			},
+		},
+	}
+	provenance := liveCandidateProvenance{
+		SourceCommit: strings.Repeat("a", 40), WorkflowRunID: "12345",
+		AttestationWorkflow: releaseCandidateAttestationWorkflow, AttestationVerified: true,
+	}
+	artifact, err := makeLiveDiagnosticArtifact(result, &stable, provenance, time.Unix(1, 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(artifact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{
+		"private-database-path", "database-secret-marker", "media-secret-marker",
+	} {
+		if bytes.Contains(payload, []byte(forbidden)) {
+			t.Fatalf("live diagnostic included forbidden raw data %q", forbidden)
+		}
+	}
+	if artifact.SchemaVersion != 1 || artifact.ArtifactKind != liveDiagnosticKind ||
+		!artifact.QualificationOnly || artifact.FormalReleaseEvidence || artifact.PromotionVerified ||
+		artifact.SecretsIncluded || artifact.PathsIncluded || artifact.AccountIdentityIncluded ||
+		artifact.ChatContentIncluded || artifact.RawProviderResponseIncluded ||
+		artifact.ProcessInventoryStable == nil || !*artifact.ProcessInventoryStable {
+		t.Fatal("live diagnostic lost its non-promotable redaction boundary")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	var formal releaseEvidenceArtifact
+	if err := decoder.Decode(&formal); err == nil {
+		t.Fatal("qualification-only live diagnostic decoded as formal release evidence")
+	}
+}
+
+func TestLiveDiagnosticRejectsUnboundedFields(t *testing.T) {
+	provenance := liveCandidateProvenance{
+		SourceCommit: strings.Repeat("a", 40), WorkflowRunID: "12345",
+		AttestationWorkflow: releaseCandidateAttestationWorkflow, AttestationVerified: true,
+	}
+	result := response{Diagnostics: diagnostics{
+		ResultCode: "deadline_exhausted", RequestedScopes: []string{"database", "media"},
+		PhaseTimingsMS: map[string]int64{"private_path": 1}, FallbackStageCounts: map[string]int{},
+	}}
+	if _, err := makeLiveDiagnosticArtifact(result, nil, provenance, time.Unix(1, 0)); err == nil {
+		t.Fatal("live diagnostic accepted an unregistered timing field")
+	}
+	result.Diagnostics.PhaseTimingsMS = map[string]int64{}
+	result.Diagnostics.FallbackStageCounts = map[string]int{"private_path": 1}
+	if _, err := makeLiveDiagnosticArtifact(result, nil, provenance, time.Unix(1, 0)); err == nil {
+		t.Fatal("live diagnostic accepted an unregistered fallback stage")
+	}
+	provenance.AttestationVerified = false
+	result.Diagnostics.FallbackStageCounts = map[string]int{}
+	if _, err := makeLiveDiagnosticArtifact(result, nil, provenance, time.Unix(1, 0)); err == nil {
+		t.Fatal("live diagnostic accepted unverified candidate provenance")
+	}
 }

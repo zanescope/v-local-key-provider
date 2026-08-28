@@ -35,13 +35,14 @@ func TestWindowsLiveAcquisition(t *testing.T) {
 	instanceBefore := platformProcessInstanceID()
 	result := runLiveAcquisition(t)
 	defer clearLiveResponse(&result)
-	assertLiveAcquisition(t, result)
 
 	processesAfter, err := windowsmodel.NewNativeDriver(windowsmodel.NativeRuntime{}).ListProcesses()
 	if err != nil {
 		t.Fatalf("cannot inventory Windows target processes after acquisition: %v", err)
 	}
 	processInventoryStable := instanceBefore == platformProcessInstanceID() && len(processesBefore) == len(processesAfter)
+	writeLiveDiagnostic(t, result, &processInventoryStable)
+	assertLiveAcquisition(t, result)
 	if liveExpectedBoolean(t, "V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_STABLE") && !processInventoryStable {
 		t.Fatalf("target process inventory changed during the default no-termination workflow: before=%d after=%d",
 			len(processesBefore), len(processesAfter))

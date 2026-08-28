@@ -139,6 +139,8 @@ func TestRegressionMatrixKeepsAutomatedAndLiveBoundaries(t *testing.T) {
 		"P5-01", "P5-09",
 		"go test -tags=live_regression",
 		"mock 不能把该状态升级为 `real_device_verified`",
+		"build/live/diagnostic.json", "qualification_only=true", "formal_release_evidence=false",
+		"原始 Provider 响应", "promotion 也不得引用它",
 	)
 	if strings.Contains(matrix, "mock 通过即视为真机") {
 		t.Fatal("regression matrix weakens the real-device evidence boundary")
@@ -153,6 +155,8 @@ func TestRegressionMatrixKeepsAutomatedAndLiveBoundaries(t *testing.T) {
 		"V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_CONFIG_CIPHER_STATUS",
 		"V_LOCAL_KEY_PROVIDER_LIVE_DEADLINE_MS: 180000",
 		"V_LOCAL_KEY_PROVIDER_LIVE_EVIDENCE_PATH",
+		"V_LOCAL_KEY_PROVIDER_LIVE_DIAGNOSTIC_PATH",
+		"live-key-diagnostic-${{ runner.os }}-${{ inputs.expected_process_arch }}",
 		"actions/upload-artifact@", "go test -tags=live_regression",
 	)
 	for _, automaticTrigger := range []string{"pull_request:", "schedule:"} {
@@ -181,7 +185,8 @@ func TestRegressionMatrixKeepsAutomatedAndLiveBoundaries(t *testing.T) {
 	requireReleaseContractFragments(t, "live_regression_test.go",
 		"evidence := releaseEvidenceArtifact{", "QualificationOnly", "FormalReleaseEvidence",
 		"RequestedScopes", "MediaCoverageStatus", "SecretsIncluded", "PathsIncluded",
-		"AccountIdentityIncluded", "ChatContentIncluded",
+		"AccountIdentityIncluded", "ChatContentIncluded", "liveDiagnosticArtifact",
+		"RawProviderResponseIncluded", "QualificationOnly: true", "FormalReleaseEvidence: false",
 	)
 	requireReleaseContractFragments(t, ".github/workflows/audit-gates.yml",
 		"live_regression_request", "inputs.live_regression_request == ''",

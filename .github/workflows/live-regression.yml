@@ -152,9 +152,11 @@ jobs:
           V_LOCAL_KEY_PROVIDER_LIVE_EXPECT_PROCESS_STABLE: true
           V_LOCAL_KEY_PROVIDER_LIVE_DEADLINE_MS: 180000
           V_LOCAL_KEY_PROVIDER_LIVE_EVIDENCE_PATH: ${{ github.workspace }}/build/live/evidence.json
+          V_LOCAL_KEY_PROVIDER_LIVE_DIAGNOSTIC_PATH: ${{ github.workspace }}/build/live/diagnostic.json
           V_LOCAL_KEY_PROVIDER_LIVE_SCOPES: database,media
         run: |
           node -e "require('fs').rmSync('build/live/evidence.json', { force: true })"
+          node -e "require('fs').rmSync('build/live/diagnostic.json', { force: true })"
           go test -tags=live_regression -run '^Test(MacOS|Windows)LiveAcquisition$' -count=1 .
       - name: 上传脱敏真机证据
         if: always()
@@ -162,5 +164,13 @@ jobs:
         with:
           name: live-key-evidence-${{ runner.os }}-${{ inputs.expected_process_arch }}
           path: build/live/evidence.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: 上传脱敏失败诊断
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: live-key-diagnostic-${{ runner.os }}-${{ inputs.expected_process_arch }}
+          path: build/live/diagnostic.json
           if-no-files-found: error
           retention-days: 14
