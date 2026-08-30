@@ -12,7 +12,12 @@ type acquisitionDaemonEndpoint = daemonmodel.Endpoint
 type acquisitionDaemonRequest = daemonmodel.Request
 type acquisitionDaemonResponse = daemonmodel.Response
 
-func acquisitionDaemonService() (*daemonmodel.Service, error) {
+func acquisitionDaemonServiceWithStoreFactory(
+	newStore func() *acquisitionSessionStore,
+) (*daemonmodel.Service, error) {
+	if newStore == nil {
+		newStore = newAcquisitionSessionStore
+	}
 	return daemonmodel.New(daemonmodel.Config{
 		Version:            version,
 		ReleaseBuild:       releaseBuild(),
@@ -23,7 +28,7 @@ func acquisitionDaemonService() (*daemonmodel.Service, error) {
 		MarkSensitive:      markSensitiveBytes,
 		ZeroSensitive:      zeroBytes,
 		NewBackend: func(context daemonmodel.BackendContext) daemonmodel.Backend {
-			store := newAcquisitionSessionStore()
+			store := newStore()
 			store.helperMode = context.HelperMode
 			store.helperStatus = context.HelperStatus
 			return daemonmodel.Backend{
@@ -34,6 +39,10 @@ func acquisitionDaemonService() (*daemonmodel.Service, error) {
 			}
 		},
 	})
+}
+
+func acquisitionDaemonService() (*daemonmodel.Service, error) {
+	return acquisitionDaemonServiceWithStoreFactory(newAcquisitionSessionStore)
 }
 
 func runAcquisitionDaemon(reader io.Reader, writer io.Writer) error {

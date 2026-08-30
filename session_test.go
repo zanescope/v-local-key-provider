@@ -47,7 +47,7 @@ func mutateSessionFixture(t *testing.T, store *acquisitionSessionStore, id strin
 }
 
 func TestSessionPrepareBindsCatalogAndCancelRemovesSession(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -69,7 +69,7 @@ func TestSessionPrepareBindsCatalogAndCancelRemovesSession(t *testing.T) {
 }
 
 func TestSessionRejectsCatalogDriftBeforeAcquisition(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -95,7 +95,13 @@ func TestSessionRejectsCatalogDriftBeforeAcquisition(t *testing.T) {
 }
 
 func TestSessionRejectsDuplicateActionReceiptWithoutStateChange(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
+	// Duplicate-receipt policy is independent of the user's live WeChat process.
+	// Freeze this fixture's observation so a real login/restart cannot turn the
+	// same-process test into a machine-state race.
+	runtime := inertAcquisitionSessionRuntime()
+	runtime.ProcessInstanceID = func() string { return "stable-process-instance" }
+	store.coordinator = sessionmodel.NewCoordinator(store.core, runtime)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -111,7 +117,7 @@ func TestSessionRejectsDuplicateActionReceiptWithoutStateChange(t *testing.T) {
 	fingerprint, err := sessionmodel.ReceiptFingerprint(receipt, sessionmodel.ReceiptState{
 		CatalogID: session.CatalogID, ProcessInstanceID: session.ProcessInstanceID,
 		LastRoute: session.LastRoute, LastActionStage: session.LastActionStage,
-	}, platformProcessInstanceID())
+	}, "stable-process-instance")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -134,7 +140,7 @@ func TestSessionRejectsDuplicateActionReceiptWithoutStateChange(t *testing.T) {
 }
 
 func TestSessionRejectsSensitiveOrCallerControlledActionReceipt(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -162,7 +168,7 @@ func TestSessionRejectsSensitiveOrCallerControlledActionReceipt(t *testing.T) {
 }
 
 func TestSessionRequiresExplicitReceiptForPendingAction(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -192,7 +198,7 @@ func TestSessionRequiresExplicitReceiptForPendingAction(t *testing.T) {
 }
 
 func TestFinalizeWithoutActionReceiptReturnsVerifiedPartialAndEndsSession(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -229,7 +235,7 @@ func TestFinalizeWithoutActionReceiptReturnsVerifiedPartialAndEndsSession(t *tes
 }
 
 func TestFinalizeWithoutReceiptDoesNotConvertAccountMismatchToPartial(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -276,7 +282,7 @@ func TestFinalizeWithoutReceiptDoesNotConvertAccountMismatchToPartial(t *testing
 }
 
 func TestClosedSessionStoreRejectsNewPrepare(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	store.closeAll()
 	if _, err := store.handle(sessionRequestFixture(t, "prepare")); err == nil {
 		t.Fatal("closed session store accepted a new prepare request")
@@ -284,7 +290,7 @@ func TestClosedSessionStoreRejectsNewPrepare(t *testing.T) {
 }
 
 func TestSessionRejectsUnboundOrConcurrentObserve(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -312,7 +318,7 @@ func TestSessionRejectsUnboundOrConcurrentObserve(t *testing.T) {
 }
 
 func TestSessionRejectsDifferentVerifiedClientIdentity(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	request.PeerIdentity = "windows:c:/trusted/v-local-cli.exe"
 	prepared, err := store.handle(request)
@@ -331,7 +337,7 @@ func TestSessionRejectsDifferentVerifiedClientIdentity(t *testing.T) {
 }
 
 func TestFinalizeRechecksCatalogEvenWhenLatestResultExists(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -356,7 +362,7 @@ func TestFinalizeRechecksCatalogEvenWhenLatestResultExists(t *testing.T) {
 }
 
 func TestFinalizeReturnsTerminalSessionResultWithoutRepeatingAcquisition(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -383,7 +389,7 @@ func TestFinalizeReturnsTerminalSessionResultWithoutRepeatingAcquisition(t *test
 }
 
 func TestFinalizeReappliesSecretPolicyToCachedTerminalResult(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -409,7 +415,7 @@ func TestFinalizeReappliesSecretPolicyToCachedTerminalResult(t *testing.T) {
 }
 
 func TestObserveKeepsSecretsInSessionUntilFinalize(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	prepared, err := store.handle(request)
 	if err != nil {
@@ -454,7 +460,7 @@ func TestObserveKeepsSecretsInSessionUntilFinalize(t *testing.T) {
 }
 
 func TestSessionExpiresAtHardLifetime(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	base := time.Now()
 	store.setClock(func() time.Time { return base })
 	request := sessionRequestFixture(t, "prepare")
@@ -470,7 +476,7 @@ func TestSessionExpiresAtHardLifetime(t *testing.T) {
 }
 
 func TestSecondPrepareDoesNotDestroyActiveAccountSession(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	request := sessionRequestFixture(t, "prepare")
 	first, err := store.handle(request)
 	if err != nil {
@@ -493,7 +499,7 @@ func TestDaemonAcceptsFramedPrepareRequest(t *testing.T) {
 	}
 	payload = append(payload, '\n')
 	var output bytes.Buffer
-	if err := runAcquisitionDaemon(bytes.NewReader(payload), &output); err != nil {
+	if err := runTestAcquisitionDaemon(bytes.NewReader(payload), &output); err != nil {
 		t.Fatal(err)
 	}
 	var result response

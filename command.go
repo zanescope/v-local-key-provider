@@ -104,6 +104,9 @@ func runMain() int {
 	if handled, code := runQualificationCommand(os.Args, os.Stdin, os.Stdout); handled {
 		return code
 	}
+	if handled, code := runShadowGateCommand(os.Args, os.Stdout); handled {
+		return code
+	}
 	if len(os.Args) == 2 && os.Args[1] == "daemon" {
 		if err := runAcquisitionDaemon(os.Stdin, os.Stdout); err != nil {
 			return writeError(err, 3)

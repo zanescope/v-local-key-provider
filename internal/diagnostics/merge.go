@@ -69,7 +69,7 @@ func NewSessionMergePolicies() map[string]SessionMergePolicy {
 		}
 	}
 	assign(SessionMergeCurrent,
-		"ResultCode", "WorkflowStatus", "RequestedScopes", "DatabaseTargetStatus", "DatabaseCoverageStatus",
+		"ResultCode", "WorkflowStatus", "RequestedScopes", "DatabaseTargetStatus", "DatabaseCoverageStatus", "ShadowAttempt",
 		"MediaCoverageStatus", "NextAction", "BlockingReasons", "CandidateMode", "MissingDatabaseCount",
 		"MissingDatabaseIDs", "SessionID", "SessionExpiresAt", "ProcessInstanceID", "ActionStage",
 		"HookTriggerRequired", "HookRestartRequired", "HookReloginRequired", "DatabaseCount",

@@ -97,7 +97,7 @@ func TestAcquisitionDaemonHelperRequiresExactProviderVersion(t *testing.T) {
 func TestAcquisitionDaemonServesSessionAndCleansEndpoint(t *testing.T) {
 	endpointPath := filepath.Join(secureDaemonTestDirectory(t), "endpoint.json")
 	finished := make(chan error, 1)
-	go func() { finished <- serveAcquisitionDaemon(endpointPath) }()
+	go func() { finished <- serveTestAcquisitionDaemon(endpointPath) }()
 	endpoint := waitForAcquisitionEndpoint(t, endpointPath, finished)
 	if ping := daemonTestExchange(t, endpoint, "ping", nil); ping.Status != "ready" {
 		t.Fatalf("daemon ping status = %q", ping.Status)
@@ -133,7 +133,7 @@ func TestAcquisitionDaemonServesSessionAndCleansEndpoint(t *testing.T) {
 func TestAcquisitionDaemonDoesNotLetSlowUnauthenticatedClientBlockPing(t *testing.T) {
 	endpointPath := filepath.Join(secureDaemonTestDirectory(t), "endpoint.json")
 	finished := make(chan error, 1)
-	go func() { finished <- serveAcquisitionDaemon(endpointPath) }()
+	go func() { finished <- serveTestAcquisitionDaemon(endpointPath) }()
 	endpoint := waitForAcquisitionEndpoint(t, endpointPath, finished)
 	slow, err := net.DialTimeout("tcp4", endpoint.Address, time.Second)
 	if err != nil {
@@ -167,7 +167,7 @@ func TestAcquisitionDaemonDoesNotLetSlowUnauthenticatedClientBlockPing(t *testin
 func TestDaemonRejectsGuessedTokenWithoutAffectingAuthenticatedSession(t *testing.T) {
 	endpointPath := filepath.Join(secureDaemonTestDirectory(t), "endpoint.json")
 	finished := make(chan error, 1)
-	go func() { finished <- serveAcquisitionDaemon(endpointPath) }()
+	go func() { finished <- serveTestAcquisitionDaemon(endpointPath) }()
 	endpoint := waitForAcquisitionEndpoint(t, endpointPath, finished)
 
 	guessed := daemonRawExchange(t, endpoint, acquisitionDaemonRequest{
@@ -224,7 +224,7 @@ func daemonShutdownWhenAdmitted(t *testing.T, endpoint acquisitionDaemonEndpoint
 func TestAcquisitionDaemonBoundsConcurrentConnections(t *testing.T) {
 	endpointPath := filepath.Join(secureDaemonTestDirectory(t), "endpoint.json")
 	finished := make(chan error, 1)
-	go func() { finished <- serveAcquisitionDaemon(endpointPath) }()
+	go func() { finished <- serveTestAcquisitionDaemon(endpointPath) }()
 	endpoint := waitForAcquisitionEndpoint(t, endpointPath, finished)
 
 	// 已接纳的连接在认证超时前一直占用名额，因此必须先一次性建满，再回读。

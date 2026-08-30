@@ -28,7 +28,7 @@ func TestAcquisitionPlatformSessionCollectStatusAndCloseAreBounded(t *testing.T)
 }
 
 func TestCancelSessionRemovesSecretsAndPlatformState(t *testing.T) {
-	store := newAcquisitionSessionStore()
+	store := newTestAcquisitionSessionStore(t)
 	closed := 0
 	record := &acquisitionSession{
 		ID: "session", CatalogKey: []byte{1, 2, 3}, PlatformSession: newSynchronizedPlatformSession(nil, nil, func() { closed++ }),

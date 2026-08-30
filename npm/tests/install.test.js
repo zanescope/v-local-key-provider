@@ -143,7 +143,7 @@ test('正式安装目录固定在当前用户私有配置树且按架构隔离',
 });
 
 test('固定安装目录逐层创建并拒绝符号链接或目录联接祖先', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'v-local-key-provider-install-root-'));
+  const root = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'v-local-key-provider-install-root-'));
   const base = path.join(root, 'base');
   const direct = path.join(base, 'v-local', 'key-provider', 'test-arch');
   const external = path.join(root, 'external');
