@@ -46,7 +46,7 @@ func TestWindowsNamedPipeBindsPeerImageBeforeTokenAuthentication(t *testing.T) {
 		t.Fatal(err)
 	}
 	finished := make(chan error, 1)
-	go func() { finished <- serveAcquisitionDaemonForClient(endpointPath, clientPath) }()
+	go func() { finished <- serveTestAcquisitionDaemonForClient(endpointPath, clientPath) }()
 	endpoint := waitForAcquisitionEndpoint(t, endpointPath, finished)
 	if endpoint.Transport != daemonmodel.WindowsTransport || endpoint.ClientPath != clientPath {
 		t.Fatalf("daemon did not publish a client-bound named pipe endpoint: %+v", endpoint)

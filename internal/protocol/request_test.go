@@ -2,8 +2,12 @@ package protocol
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	shadowmodel "github.com/zanescope/v-local-key-provider/internal/shadowcontract"
 )
 
 func validRequest() AcquireRequest {
@@ -65,6 +69,66 @@ func TestWorkflowOperationsRemainFailClosed(t *testing.T) {
 				t.Fatal("invalid workflow state was accepted")
 			}
 		})
+	}
+}
+
+func shadowRequestFixture(t *testing.T) shadowmodel.Request {
+	t.Helper()
+	payload, err := os.ReadFile(filepath.Join("..", "..", "testdata", "shadow-contract-v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors shadowmodel.GoldenVectors
+	if err := shadowmodel.DecodeStrict(payload, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	return vectors.ExecuteRequest
+}
+
+func TestShadowWorkflowRequiresIndependentStrictBoundContract(t *testing.T) {
+	shadow := shadowRequestFixture(t)
+	request := validRequest()
+	request.RequestID = shadow.RequestID
+	request.Workflow = WorkflowRequest{Operation: "shadow", Shadow: &shadow}
+	payload, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := DecodeRequestData(payload); err != nil {
+		t.Fatalf("valid Shadow sub-contract was rejected: %v", err)
+	}
+
+	tests := []struct {
+		name   string
+		mutate func(*AcquireRequest)
+	}{
+		{name: "missing inner contract", mutate: func(value *AcquireRequest) { value.Workflow.Shadow = nil }},
+		{name: "outer request mismatch", mutate: func(value *AcquireRequest) { value.RequestID = strings.Repeat("f", 32) }},
+		{name: "deadline reset", mutate: func(value *AcquireRequest) { value.Workflow.Shadow.Deadline.CLIVerifyNS++ }},
+		{name: "session mixed in", mutate: func(value *AcquireRequest) { value.Workflow.SessionID = "legacy-session" }},
+		{name: "catalog mixed in", mutate: func(value *AcquireRequest) { value.Workflow.ExpectedCatalogID = "legacy-catalog" }},
+		{name: "receipt mixed in", mutate: func(value *AcquireRequest) { value.Workflow.ActionReceipt = &ActionReceipt{Action: "restart_wechat"} }},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			inner := shadowRequestFixture(t)
+			candidate := validRequest()
+			candidate.RequestID = inner.RequestID
+			candidate.Workflow = WorkflowRequest{Operation: "shadow", Shadow: &inner}
+			test.mutate(&candidate)
+			encoded, err := json.Marshal(candidate)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := DecodeRequestData(encoded); err == nil {
+				t.Fatal("invalid Shadow workflow state was accepted")
+			}
+		})
+	}
+
+	unknown := strings.Replace(string(payload), `"version":"`+shadowmodel.Version+`"`, `"unknown":true,"version":"`+shadowmodel.Version+`"`, 1)
+	if _, err := DecodeRequestData([]byte(unknown)); err == nil {
+		t.Fatal("unknown nested Shadow field was accepted")
 	}
 }
 

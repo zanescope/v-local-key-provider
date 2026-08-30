@@ -34,6 +34,18 @@ func HasCompleteRequestedCoverage(diag diagnosticmodel.Diagnostics) bool {
 
 // DiagnosticsPermitSecrets 是 one-shot 与 session 响应共享的唯一凭据发布策略。
 func DiagnosticsPermitSecrets(diag diagnosticmodel.Diagnostics) bool {
+	// Shadow uses a stricter inner result contract: no outer workflow status may
+	// release credentials until the independently validated cleanup receipt says
+	// every one-shot resource is absent. This check deliberately precedes the
+	// legacy terminal-result policy below.
+	if diag.ShadowAttempt != nil {
+		attempt := diag.ShadowAttempt
+		if err := attempt.Validate(); err != nil {
+			return false
+		}
+		return attempt.Status == "ready" && attempt.CredentialReleased &&
+			attempt.Receipt != nil && attempt.Receipt.Cleanup.Complete()
+	}
 	if diag.TargetBindingStatus == "mismatch" || diag.SessionAccountStatus == "known_other" {
 		return false
 	}

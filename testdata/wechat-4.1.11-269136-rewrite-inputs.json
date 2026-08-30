@@ -1,0 +1,11 @@
+[
+  {"path":"Contents/Info.plist","key":"CFBundleIdentifier"},
+  {"path":"Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeApp.app/Contents/Info.plist","key":"CFBundleIdentifier"},
+  {"path":"Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (GPU).app/Contents/Info.plist","key":"CFBundleIdentifier"},
+  {"path":"Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Plugin).app/Contents/Info.plist","key":"CFBundleIdentifier"},
+  {"path":"Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper (Renderer).app/Contents/Info.plist","key":"CFBundleIdentifier"},
+  {"path":"Contents/MacOS/WeChatAppEx.app/Contents/Frameworks/WeChatAppEx Framework.framework/Versions/C/Helpers/WeChatAppEx Helper.app/Contents/Info.plist","key":"CFBundleIdentifier"},
+  {"path":"Contents/MacOS/WeChatAppEx.app/Contents/Info.plist","key":"CFBundleIdentifier"},
+  {"path":"Contents/PlugIns/WeChatFileProviderExtension.appex/Contents/Info.plist","key":"CFBundleIdentifier"},
+  {"path":"Contents/PlugIns/WeChatMacShare.appex/Contents/Info.plist","key":"CFBundleIdentifier"}
+]

@@ -1,11 +1,14 @@
 package protocol
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	credentialmodel "github.com/zanescope/v-local-key-provider/internal/credential"
 	diagnosticmodel "github.com/zanescope/v-local-key-provider/internal/diagnostics"
+	shadowmodel "github.com/zanescope/v-local-key-provider/internal/shadowcontract"
 )
 
 func secretResponseFixture() Response {
@@ -89,5 +92,69 @@ func TestSecretPolicyAllowsVerifiedTerminalAndCompleteRestorationOutcomes(t *tes
 	}
 	if value := EnforceSecretPolicy(incomplete); value.DatabaseKeys != nil || value.DatabaseCredential != nil || value.ImageKeys != nil {
 		t.Fatalf("incomplete restoration retained secrets: %+v", value)
+	}
+}
+
+func readyShadowResult(t *testing.T) shadowmodel.Result {
+	t.Helper()
+	payload, err := os.ReadFile(filepath.Join("..", "..", "testdata", "shadow-contract-v1.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var vectors shadowmodel.GoldenVectors
+	if err := shadowmodel.DecodeStrict(payload, &vectors); err != nil {
+		t.Fatal(err)
+	}
+	return vectors.ReadyResult
+}
+
+func TestSecretPolicyRequiresValidatedReadyShadowCleanup(t *testing.T) {
+	ready := readyShadowResult(t)
+	tests := []struct {
+		name   string
+		mutate func(*shadowmodel.Result)
+		allow  bool
+	}{
+		{name: "ready", allow: true},
+		{name: "failed despite outer complete", mutate: func(value *shadowmodel.Result) {
+			value.Status = "failed"
+			value.ErrorCode = shadowmodel.ErrorCapture
+			value.CredentialReleased = false
+			value.Receipt = nil
+		}},
+		{name: "cleanup pending despite outer complete", mutate: func(value *shadowmodel.Result) {
+			value.Status = "cleanup_pending"
+			value.ErrorCode = shadowmodel.ErrorCleanup
+			value.CredentialReleased = false
+			value.Receipt.Cleanup.SocketAbsent = false
+		}},
+		{name: "forged ready with residue", mutate: func(value *shadowmodel.Result) {
+			value.Receipt.Cleanup.CloneAbsent = false
+		}},
+		{name: "forged ready without release", mutate: func(value *shadowmodel.Result) {
+			value.CredentialReleased = false
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			attempt := ready
+
+			// The receipt contains slices and a pointer, so isolate every mutation.
+			receipt := *ready.Receipt
+			receipt.Resources = append([]shadowmodel.ResourceBinding(nil), ready.Receipt.Resources...)
+			attempt.Receipt = &receipt
+			if test.mutate != nil {
+				test.mutate(&attempt)
+			}
+			response := secretResponseFixture()
+			response.Diagnostics = diagnosticmodel.Diagnostics{
+				ResultCode: "complete", WorkflowStatus: "terminal", TargetBindingStatus: "hmac_verified",
+				ShadowAttempt: &attempt,
+			}
+			permitted := EnforceSecretPolicy(response).DatabaseKeys != nil
+			if permitted != test.allow {
+				t.Fatalf("Shadow secret policy permit=%v want %v for %+v", permitted, test.allow, attempt)
+			}
+		})
 	}
 }

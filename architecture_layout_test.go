@@ -28,6 +28,8 @@ func TestProviderRootProductionFilesStayOnCompositionAllowlist(t *testing.T) {
 			"path_safety_other.go", "path_safety_windows.go",
 			"platform_darwin.go", "platform_darwin_nocgo.go", "platform_helper_darwin.go", "platform_helper_other.go",
 			"platform_session_other.go", "platform_unsupported.go",
+			"shadow_gate_darwin.go", "shadow_gate_other.go",
+			"shadow_production_darwin.go", "shadow_production_other.go",
 			"runtime_trust_darwin.go", "runtime_trust_other.go", "runtime_trust_windows.go",
 			"qualification_bootstrap_disabled.go", "qualification_bootstrap_unsupported.go", "qualification_bootstrap_windows.go",
 			"security_posture_darwin.go", "security_posture_other.go",
@@ -121,6 +123,28 @@ func TestDaemonImplementationStaysBehindInternalBoundary(t *testing.T) {
 			}
 			if value == "github.com/zanescope/v-local-key-provider" {
 				t.Errorf("%s imports the Provider composition root", path)
+			}
+		}
+	}
+}
+
+func TestStatefulTestsCannotStartProductionPlatformSession(t *testing.T) {
+	forbiddenByFile := map[string][]string{
+		"session_test.go":                  {"acquisitionSessionRuntime()", "runAcquisitionDaemon("},
+		"daemon_server_test.go":            {"serveAcquisitionDaemon("},
+		"daemon_transport_windows_test.go": {"serveAcquisitionDaemonForClient("},
+		"platform_session_test.go":         {"newAcquisitionSessionStore()"},
+		"shadow_vertical_slice_test.go":    {"newAcquisitionSessionStore()"},
+	}
+	for path, forbidden := range forbiddenByFile {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Errorf("cannot read %s: %v", path, err)
+			continue
+		}
+		for _, value := range forbidden {
+			if strings.Contains(string(content), value) {
+				t.Errorf("%s bypasses the inert test composition with %q", path, value)
 			}
 		}
 	}
