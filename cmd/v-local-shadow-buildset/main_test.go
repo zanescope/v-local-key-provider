@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 
 	shadowbuildset "github.com/zanescope/v-local-key-provider/internal/shadowbuildset"
@@ -50,6 +51,9 @@ func testStagingRoot(t *testing.T) string {
 }
 
 func TestFreezeRootPublishesOnceAndImmediatelyVerifies(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("frozen build-set POSIX ownership and modes are a macOS gate")
+	}
 	root := testStagingRoot(t)
 	result, err := freezeRoot(root, shadowbuildset.RouteSyntheticOnly)
 	if err != nil || !result.Frozen || !result.Verified || result.BuildSetDigest == "" {

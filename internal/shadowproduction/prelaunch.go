@@ -68,10 +68,14 @@ func (value *Prelaunch) qualifyCurrent(ctx context.Context, request contract.Req
 	if err := shadowaccount.Revalidate(value.Account); err != nil {
 		return shadowsource.Qualification{}, shadowmodel.SourceBinding{}, shadowmodel.NewFailure(contract.ErrorSourceDrift)
 	}
+	frozen, err := LoadBundle(value.Bundle.Root)
+	if err != nil || frozen.Digest != value.Bundle.Digest {
+		return shadowsource.Qualification{}, shadowmodel.SourceBinding{}, shadowmodel.NewFailure(contract.ErrorBuildSetMismatch)
+	}
 	if value.SecurityPosture() != "sip_enabled_verified" {
 		return shadowsource.Qualification{}, shadowmodel.SourceBinding{}, shadowmodel.NewFailure(contract.ErrorSecurityPostureDrift)
 	}
-	qualification, err := value.Inspector.Qualify(ctx, value.SourcePath, value.Bundle.Source)
+	qualification, err := value.Inspector.Qualify(ctx, value.SourcePath, frozen.Source)
 	if err != nil || qualification.QualificationDigest != request.SourceQualificationDigest {
 		return shadowsource.Qualification{}, shadowmodel.SourceBinding{}, shadowmodel.NewFailure(contract.ErrorSourceDrift)
 	}
@@ -151,10 +155,15 @@ func (value *Prelaunch) Transform(ctx context.Context, record shadowmodel.Recove
 		record.BundleID != "com.zanescope.vlocal.shadow."+record.AttemptID || !value.preparedWorkspaceBound(record) {
 		return shadowmodel.NewFailure(contract.ErrorTransformationUnsupported)
 	}
-	_, err := value.Workspace.Transform(
-		ctx, value.Account, record.RootLeaf, value.Bundle.Root, value.Bundle.Transformation, record.BundleID,
+	frozen, err := LoadBundle(value.Bundle.Root)
+	if err != nil || frozen.Digest != value.Bundle.Digest {
+		return shadowmodel.NewFailure(contract.ErrorTransformationUnsupported)
+	}
+	_, err = value.Workspace.Transform(
+		ctx, value.Account, record.RootLeaf, frozen.Root, frozen.Transformation, record.BundleID,
 	)
-	if err != nil || !value.preparedWorkspaceBound(record) {
+	after, bundleErr := LoadBundle(value.Bundle.Root)
+	if err != nil || bundleErr != nil || after.Digest != value.Bundle.Digest || !value.preparedWorkspaceBound(record) {
 		return shadowmodel.NewFailure(contract.ErrorTransformationUnsupported)
 	}
 	return nil

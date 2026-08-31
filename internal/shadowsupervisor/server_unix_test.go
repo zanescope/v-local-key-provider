@@ -534,6 +534,50 @@ func TestPreexecSupervisorDoesNotRunTargetBeforeBoundRelease(t *testing.T) {
 	waitProcessAbsent(t, bound.PID)
 }
 
+func TestPreexecSupervisorRejectsTargetDriftWhileHeld(t *testing.T) {
+	root := canonicalSupervisorRoot(t)
+	executable := copySupervisorHelper(t, root)
+	server, client := socketPair(t)
+	clock := clockmodel.System{}
+	finished := make(chan error, 1)
+	go func() { finished <- Serve(server, clock) }()
+	init := supervisorInit(t, clock, root, executable, 5*time.Second)
+	init.Mode = "preexec"
+	init.Arguments = []string{"-test.run=^TestSupervisorPreexecTarget$"}
+	if err := writeFrame(client, init); err != nil {
+		t.Fatal(err)
+	}
+	reader := bufio.NewReaderSize(client, maxFrameBytes+1)
+	supervisor := expectSupervisorBinding(t, client, reader)
+	bound := prepareTarget(t, client, reader, supervisor)
+	displaced := executable + ".displaced"
+	if err := os.Rename(executable, displaced); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(executable, []byte("#!/bin/sh\nexit 44\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFrame(client, Frame{Version: ProtocolVersion, Type: "release", PID: bound.PID, StartNS: bound.StartNS}); err != nil {
+		t.Fatal(err)
+	}
+	failed := nextFrame(t, client, reader)
+	if failed.Type != "failed" || failed.ErrorCode != "process_start_failed" {
+		t.Fatalf("target drift was not rejected: %+v", failed)
+	}
+	select {
+	case err := <-finished:
+		if err == nil {
+			t.Fatal("target drift unexpectedly completed the supervisor")
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("supervisor did not terminate after target drift")
+	}
+	waitProcessAbsent(t, bound.PID)
+	if _, err := os.Stat(filepath.Join(root, "preexec.marker")); !os.IsNotExist(err) {
+		t.Fatal("drifted pre-exec target ran")
+	}
+}
+
 func TestSupervisorLeaseExpiresBeforePrepareWithoutStartingProcess(t *testing.T) {
 	root := canonicalSupervisorRoot(t)
 	executable := copySupervisorHelper(t, root)

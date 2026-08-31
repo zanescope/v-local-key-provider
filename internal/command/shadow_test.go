@@ -1,6 +1,7 @@
 package command
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -107,5 +108,38 @@ func TestExecuteShadowMapsSyntheticReadyWithoutClaimingRealRoute(t *testing.T) {
 		if value != 0 {
 			t.Fatal("Provider command retained the released credential payload")
 		}
+	}
+}
+
+func TestExecuteShadowRejectsUnrequestedCredentialScope(t *testing.T) {
+	vectors := commandShadowVectors(t)
+	credential := append([]byte(nil), validShadowCredentialJSON(t)...)
+	credential = bytes.TrimSuffix(credential, []byte("}"))
+	credential = append(credential, []byte(`,"image_keys":{"aes":"1234567890abcdef","xor":7}}`)...)
+	runner := shadowRunnerStub{executed: shadowmodel.Output{Result: vectors.ReadyResult, Credential: credential}}
+	response, err := ExecuteShadow(context.Background(), commandShadowRequest(vectors.ExecuteRequest), runner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.Diagnostics.ShadowAttempt == nil ||
+		response.Diagnostics.ShadowAttempt.ErrorCode != contract.ErrorCredentialInvalid ||
+		response.DatabaseKeys != nil || response.DatabaseCredential != nil || response.ImageKeys != nil {
+		t.Fatalf("unrequested media credential escaped database-only policy: %+v", response)
+	}
+}
+
+func TestExecuteShadowRejectsNonCanonicalScopesBeforeRunner(t *testing.T) {
+	vectors := commandShadowVectors(t)
+	for name, scopes := range map[string][]string{
+		"empty": {}, "duplicate": {"database", "database"},
+		"unknown": {"database", "other"}, "order": {"media", "database"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			request := commandShadowRequest(vectors.ExecuteRequest)
+			request.Scopes = scopes
+			if _, err := ExecuteShadow(context.Background(), request, shadowRunnerStub{}); err == nil {
+				t.Fatal("non-canonical Shadow scopes reached the runner")
+			}
+		})
 	}
 }

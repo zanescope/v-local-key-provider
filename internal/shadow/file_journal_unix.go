@@ -129,7 +129,8 @@ func journalStat(rootFD int, leaf string, allowEmpty bool) (unix.Stat_t, error) 
 
 func sameJournalStat(left, right unix.Stat_t) bool {
 	return left.Dev == right.Dev && left.Ino == right.Ino && left.Uid == right.Uid &&
-		left.Mode == right.Mode && left.Nlink == right.Nlink && left.Size == right.Size
+		left.Mode == right.Mode && left.Nlink == right.Nlink && left.Size == right.Size &&
+		left.Mtim == right.Mtim
 }
 
 func bindingFromJournalStat(leaf string, stat unix.Stat_t) (contract.ResourceBinding, error) {
@@ -188,10 +189,16 @@ func readRecovery(rootFD int) (RecoveryRecord, error) {
 		return RecoveryRecord{}, errors.New("shadow recovery record changed during open")
 	}
 	payload, readErr := io.ReadAll(io.LimitReader(file, maxRecoveryRecordBytes+1))
+	var after unix.Stat_t
+	statErr := unix.Fstat(fd, &after)
+	current, pathErr := journalStat(rootFD, recoveryLeaf, false)
 	closeErr := file.Close()
 	if readErr != nil || closeErr != nil || len(payload) == 0 || int64(len(payload)) != stat.Size ||
 		len(payload) > maxRecoveryRecordBytes {
 		return RecoveryRecord{}, errors.New("shadow recovery record is empty, drifted, or oversized")
+	}
+	if statErr != nil || pathErr != nil || !sameJournalStat(opened, after) || !sameJournalStat(after, current) {
+		return RecoveryRecord{}, errors.New("shadow recovery record changed during read")
 	}
 	var record RecoveryRecord
 	if err := contract.DecodeStrict(payload, &record); err != nil || record.Validate() != nil {

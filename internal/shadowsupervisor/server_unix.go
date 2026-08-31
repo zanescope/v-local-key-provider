@@ -140,6 +140,14 @@ func ExecGate(
 		return errors.New("pre-exec gate closed before release")
 	}
 	_ = gate.Close()
+	executable, _, err = canonicalExecutable(executable, cloneRoot)
+	if err != nil {
+		return errors.New("pre-exec target binding changed while held")
+	}
+	currentDigest, err = digestFile(executable)
+	if err != nil || currentDigest != executableDigest {
+		return errors.New("pre-exec target digest changed while held")
+	}
 	unix.CloseOnExec(statusFD)
 	argv := append([]string{executable}, arguments...)
 	if err := syscall.Exec(executable, argv, environment); err != nil {

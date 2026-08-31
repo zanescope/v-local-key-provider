@@ -302,6 +302,21 @@ func TestAttemptLockReleaseFailureWithholdsCredential(t *testing.T) {
 	}
 }
 
+func TestAttemptLockReleaseFailureCannotHideCleanupPending(t *testing.T) {
+	coordinator, clock, journal, adapter := newSyntheticHarness(t)
+	coordinator.config.Locker.(*MemoryLocker).FailRelease = true
+	adapter.FailBefore["remove_container"] = contract.ErrorCleanup
+	output, err := coordinator.Execute(context.Background(), syntheticRequest(clock,
+		"10101010101010101010101010101010", "20202020202020202020202020202020"))
+	if err != nil || output.Result.Status != "cleanup_pending" || output.Result.ErrorCode != contract.ErrorCleanup ||
+		output.Result.CredentialReleased || len(output.Credential) != 0 {
+		t.Fatalf("release failure obscured cleanup-pending state: output=%+v err=%v", output, err)
+	}
+	if journal.Record == nil || !adapter.Residue() {
+		t.Fatal("cleanup-pending recovery binding or residue was lost")
+	}
+}
+
 func TestEverySyntheticSideEffectFailureUsesTheOnlyFinalizer(t *testing.T) {
 	stages := []string{
 		"create_workspace", "transform", "create_capture_leaves", "register_launch", "create_container",

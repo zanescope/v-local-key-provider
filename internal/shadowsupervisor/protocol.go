@@ -43,15 +43,32 @@ func validDigest(value string) bool {
 }
 
 func digestFile(path string) (string, error) {
+	before, err := os.Lstat(path)
+	if err != nil || !before.Mode().IsRegular() || before.Mode()&os.ModeSymlink != 0 ||
+		before.Size() <= 0 || before.Size() > 256*1024*1024 {
+		return "", errors.New("supervised executable is not an exact regular file")
+	}
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer file.Close()
+	opened, err := file.Stat()
+	if err != nil || !os.SameFile(before, opened) {
+		return "", errors.New("supervised executable drifted before read")
+	}
 	digest := sha256.New()
 	read, err := io.Copy(digest, io.LimitReader(file, 256*1024*1024+1))
-	if err != nil || read > 256*1024*1024 {
+	if err != nil || read != before.Size() || read > 256*1024*1024 {
 		return "", errors.New("supervised executable is oversized or unreadable")
+	}
+	after, statErr := file.Stat()
+	pathAfter, pathErr := os.Lstat(path)
+	resolvedAfter, resolveErr := filepath.EvalSymlinks(path)
+	if statErr != nil || pathErr != nil || resolveErr != nil || resolvedAfter != filepath.Clean(path) ||
+		pathAfter.Mode()&os.ModeSymlink != 0 || !os.SameFile(opened, after) || !os.SameFile(after, pathAfter) ||
+		after.Size() != opened.Size() || after.Mode() != opened.Mode() {
+		return "", errors.New("supervised executable drifted during read")
 	}
 	return hex.EncodeToString(digest.Sum(nil)), nil
 }
@@ -76,7 +93,10 @@ func canonicalExecutable(path, root string) (string, string, error) {
 	return path, root, nil
 }
 
-func (value Frame) validateInit() error {
+func (value *Frame) validateInit() error {
+	if value == nil {
+		return errors.New("supervisor init frame is invalid")
+	}
 	if value.Version != ProtocolVersion || value.Type != "init" ||
 		(value.Mode != "synthetic" && value.Mode != "preexec") ||
 		value.LeaseDeadlineNS == 0 || !validDigest(value.ExecutableDigest) || value.PID != 0 || value.StartNS != 0 ||
@@ -181,6 +201,16 @@ func writeFrame(writer io.Writer, frame Frame) error {
 	if err != nil || len(payload) > maxFrameBytes {
 		return errors.New("supervisor response frame is invalid")
 	}
-	_, err = writer.Write(append(payload, '\n'))
-	return err
+	payload = append(payload, '\n')
+	for len(payload) > 0 {
+		written, writeErr := writer.Write(payload)
+		if writeErr != nil {
+			return writeErr
+		}
+		if written <= 0 || written > len(payload) {
+			return io.ErrShortWrite
+		}
+		payload = payload[written:]
+	}
+	return nil
 }

@@ -95,7 +95,7 @@ var _ shadowmodel.Adapter = (*Adapter)(nil)
 var _ shadowmodel.CleanupExecutor = (*Adapter)(nil)
 
 func safeExecutableLeaf(value string) bool {
-	return value != "" && value != "." && !filepath.IsAbs(value) && !strings.Contains(value, "\\") &&
+	return value != "" && value != "." && !filepath.IsAbs(value) && !strings.ContainsAny(value, "\\:") &&
 		filepath.Clean(value) == value && value != ".." && !strings.HasPrefix(value, ".."+string(filepath.Separator))
 }
 

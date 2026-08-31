@@ -84,6 +84,10 @@ func (value Bundle) SupervisorBinding() (contract.ResourceBinding, error) {
 	if !found || value.Root == "" || value.Digest == "" {
 		return contract.ResourceBinding{}, errors.New("production supervisor artifact is unavailable")
 	}
+	payload, err := shadowbuildset.LoadArtifact(value.Root, value.Digest, "supervisor")
+	if err != nil || int64(len(payload)) != artifact.Size {
+		return contract.ResourceBinding{}, errors.New("production supervisor artifact digest drifted")
+	}
 	path := filepath.Join(value.Root, artifact.Leaf)
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 ||

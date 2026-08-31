@@ -3,10 +3,14 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
 func TestWriteFrozenFilesIsExclusiveAndRollsBackItsOwnOutputs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("frozen manifest POSIX ownership and modes are a macOS gate")
+	}
 	base, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

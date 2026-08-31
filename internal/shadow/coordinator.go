@@ -158,7 +158,10 @@ func (value *Coordinator) Execute(parent context.Context, request contract.Reque
 		if err := release(); err != nil {
 			clearBytes(output.Credential)
 			output.Credential = nil
-			if resultErr == nil {
+			// A cleanup_pending result is the stronger safety fact. Lock-release
+			// failure must not erase the durable recovery warning and misreport
+			// an attempt with possible residue as an ordinary failure.
+			if resultErr == nil && output.Result.Status != "cleanup_pending" {
 				failed := resultFor(request, "failed", contract.ErrorInternal)
 				failed.Receipt = output.Result.Receipt
 				output = Output{Result: failed}

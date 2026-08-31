@@ -3,6 +3,7 @@ package shadow
 import (
 	"context"
 	"errors"
+	"sync"
 
 	contract "github.com/zanescope/v-local-key-provider/internal/shadowcontract"
 )
@@ -97,18 +98,32 @@ func cloneRecoveryRecord(source RecoveryRecord) RecoveryRecord {
 }
 
 type MemoryLocker struct {
+	mu           sync.Mutex
 	Held         bool
 	Acquisitions int
 	FailRelease  bool
 }
 
-func (value *MemoryLocker) Acquire(context.Context) (func() error, error) {
+func (value *MemoryLocker) Acquire(ctx context.Context) (func() error, error) {
+	if value == nil || ctx == nil || ctx.Err() != nil {
+		return nil, errors.New("shadow attempt lock context is unavailable")
+	}
+	value.mu.Lock()
 	if value.Held {
+		value.mu.Unlock()
 		return nil, errors.New("shadow attempt lock is already held")
 	}
 	value.Held = true
 	value.Acquisitions++
+	value.mu.Unlock()
+	released := false
 	return func() error {
+		value.mu.Lock()
+		defer value.mu.Unlock()
+		if released || !value.Held {
+			return errors.New("shadow attempt lock was already released")
+		}
+		released = true
 		value.Held = false
 		if value.FailRelease {
 			return errors.New("injected shadow attempt lock release failure")

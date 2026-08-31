@@ -61,24 +61,46 @@ func validShadowDigest(value string) bool {
 	return err == nil
 }
 
-func validateShadowCredentialForScopes(request protocolmodel.AcquireRequest, value shadowCredentialPayload) error {
-	for _, scope := range diagnosticmodel.CanonicalScopes(request.Scopes) {
-		switch scope {
-		case "database":
-			if !validShadowDigest(value.CatalogID) || len(value.CatalogEntries) == 0 ||
-				(len(value.DatabaseKeys) == 0) == (value.DatabaseCredential == nil) {
-				return errors.New("Shadow database credential evidence is incomplete or ambiguous")
-			}
-			if value.DatabaseCredential != nil && len(value.DatabaseProfiles) != 0 {
-				return errors.New("Shadow structured database credential carried legacy profiles")
-			}
-		case "media":
-			if value.ImageKeys == nil {
-				return errors.New("Shadow media credential evidence is missing")
-			}
-		default:
-			return errors.New("Shadow credential request contains an unknown scope")
+func shadowScopeSelection(scopes []string) (database, media bool, err error) {
+	canonical := diagnosticmodel.CanonicalScopes(scopes)
+	if len(canonical) == 0 || len(canonical) != len(scopes) {
+		return false, false, errors.New("Shadow credential request scopes are empty, duplicated, or unknown")
+	}
+	for index := range canonical {
+		if canonical[index] != scopes[index] {
+			return false, false, errors.New("Shadow credential request scopes are not canonical")
 		}
+	}
+	for _, scope := range canonical {
+		database = database || scope == "database"
+		media = media || scope == "media"
+	}
+	return database, media, nil
+}
+
+func validateShadowCredentialForScopes(request protocolmodel.AcquireRequest, value shadowCredentialPayload) error {
+	database, media, err := shadowScopeSelection(request.Scopes)
+	if err != nil {
+		return err
+	}
+	if database {
+		if !validShadowDigest(value.CatalogID) || len(value.CatalogEntries) == 0 ||
+			(len(value.DatabaseKeys) == 0) == (value.DatabaseCredential == nil) {
+			return errors.New("Shadow database credential evidence is incomplete or ambiguous")
+		}
+		if value.DatabaseCredential != nil && len(value.DatabaseProfiles) != 0 {
+			return errors.New("Shadow structured database credential carried legacy profiles")
+		}
+	} else if value.CatalogID != "" || len(value.CatalogEntries) != 0 || len(value.DatabaseKeys) != 0 ||
+		len(value.DatabaseProfiles) != 0 || value.DatabaseCredential != nil || len(value.Profiles) != 0 {
+		return errors.New("Shadow response carried unrequested database credential data")
+	}
+	if media {
+		if value.ImageKeys == nil {
+			return errors.New("Shadow media credential evidence is missing")
+		}
+	} else if value.ImageKeys != nil {
+		return errors.New("Shadow response carried unrequested media credential data")
 	}
 	return nil
 }
@@ -176,6 +198,9 @@ func disabledShadowResult(request contract.Request) contract.Result {
 func ExecuteShadow(ctx context.Context, request protocolmodel.AcquireRequest, runner ShadowRunner) (protocolmodel.Response, error) {
 	if request.Workflow.Operation != "shadow" || request.Workflow.Shadow == nil {
 		return protocolmodel.Response{}, errors.New("Shadow command lacks its independent request")
+	}
+	if _, _, err := shadowScopeSelection(request.Scopes); err != nil {
+		return protocolmodel.Response{}, err
 	}
 	inner := *request.Workflow.Shadow
 	var output shadowmodel.Output

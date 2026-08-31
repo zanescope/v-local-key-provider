@@ -2,8 +2,20 @@ package shadowtransform
 
 import (
 	"context"
+	"runtime"
 	"testing"
 )
+
+func TestSafeRelativeUsesHostIndependentManifestPaths(t *testing.T) {
+	if !safeRelative("Contents/Frameworks/helper", false) || !safeRelative(".", true) {
+		t.Fatalf("slash-delimited transformation path was rejected on %s", runtime.GOOS)
+	}
+	for _, value := range []string{"", "/absolute", "../escape", "a/../escape", `a\\escape`, "C:/escape", "file:stream"} {
+		if safeRelative(value, false) {
+			t.Errorf("unsafe transformation path %q was accepted", value)
+		}
+	}
+}
 
 func TestCappedOutputReportsOverflow(t *testing.T) {
 	output := &cappedOutput{}

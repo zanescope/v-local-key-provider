@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -56,6 +57,9 @@ func testInspector(strictCalls *int, inventoryDigest *string) Inspector {
 }
 
 func TestInspectFreezeAndQualifyBindIdentityWithoutPersistingPath(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("production source inode identity is a macOS-only gate")
+	}
 	root := testSourceRoot(t)
 	strictCalls := 0
 	inventoryDigest := testInventoryDigest
@@ -84,6 +88,9 @@ func TestInspectFreezeAndQualifyBindIdentityWithoutPersistingPath(t *testing.T) 
 }
 
 func TestQualifyRejectsInventoryDrift(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("production source inode identity is a macOS-only gate")
+	}
 	root := testSourceRoot(t)
 	strictCalls := 0
 	inventoryDigest := testInventoryDigest

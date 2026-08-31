@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -52,14 +53,14 @@ type Manifest struct {
 	SigningOrder          []CodeObject   `json:"signing_order"`
 }
 
-func safeRelative(path string, allowRoot bool) bool {
-	if path == "." && allowRoot {
+func safeRelative(value string, allowRoot bool) bool {
+	if value == "." && allowRoot {
 		return true
 	}
-	if path == "" || filepath.IsAbs(path) || strings.Contains(path, "\\") || filepath.Clean(path) != path {
+	if value == "" || path.IsAbs(value) || strings.ContainsAny(value, "\\:") || path.Clean(value) != value {
 		return false
 	}
-	return path != ".." && !strings.HasPrefix(path, ".."+string(filepath.Separator))
+	return value != ".." && !strings.HasPrefix(value, "../")
 }
 
 func pathDepth(path string) int {
@@ -253,10 +254,6 @@ func exactTarget(root, relative string, allowRoot bool) (string, error) {
 	return clean, nil
 }
 
-func withinRoot(root, target string) bool {
-	return shadowinventory.WithinRoot(root, target)
-}
-
 func targetType(info os.FileInfo) string {
 	switch {
 	case info.Mode()&os.ModeSymlink != 0:
@@ -281,13 +278,16 @@ func (value StaticTransformer) Transform(ctx context.Context, root string, manif
 		value.Runner = ExecRunner{}
 	}
 	inventoryStart := time.Now()
-	_, digest, err := Inventory(root)
+	_, digest, err := shadowinventory.ScanContext(ctx, root)
 	timings := Timings{Inventory: time.Since(inventoryStart)}
 	if err != nil || digest != manifest.SourceInventoryDigest {
 		return timings, errors.New("static Shadow source inventory drifted")
 	}
 	rewriteStart := time.Now()
 	for _, removal := range manifest.Removals {
+		if err := ctx.Err(); err != nil {
+			return timings, err
+		}
 		target, err := exactTarget(root, removal.Path, false)
 		if err != nil {
 			return timings, err
@@ -304,8 +304,14 @@ func (value StaticTransformer) Transform(ctx context.Context, root string, manif
 		if err != nil {
 			return timings, errors.New("static Shadow removal failed")
 		}
+		if _, err := os.Lstat(target); !os.IsNotExist(err) {
+			return timings, errors.New("static Shadow removal absence was not proven")
+		}
 	}
 	for _, rewrite := range manifest.Rewrites {
+		if err := ctx.Err(); err != nil {
+			return timings, err
+		}
 		target, err := exactTarget(root, rewrite.Path, false)
 		if err != nil {
 			return timings, err
@@ -324,10 +330,17 @@ func (value StaticTransformer) Transform(ctx context.Context, root string, manif
 		if err := value.Runner.Run(ctx, "/usr/bin/plutil", "-replace", rewrite.Key, "-string", expanded, target); err != nil {
 			return timings, err
 		}
+		current, err = value.Runner.Output(ctx, "/usr/bin/plutil", "-extract", rewrite.Key, "raw", "-o", "-", target)
+		if err != nil || current != expanded {
+			return timings, errors.New("static Shadow plist rewrite was not exact")
+		}
 	}
 	timings.Rewrite = time.Since(rewriteStart)
 	signStart := time.Now()
 	for _, object := range manifest.SigningOrder {
+		if err := ctx.Err(); err != nil {
+			return timings, err
+		}
 		target, err := exactTarget(root, object.Path, true)
 		if err != nil {
 			return timings, err

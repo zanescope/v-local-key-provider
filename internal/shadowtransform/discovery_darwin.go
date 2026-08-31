@@ -70,6 +70,7 @@ func (value *boundedDiscoveryBuffer) Write(payload []byte) (int, error) {
 
 func discoveryCommand(ctx context.Context, input []byte, combined bool, name string, arguments ...string) ([]byte, error) {
 	command := exec.CommandContext(ctx, name, arguments...)
+	command.Env = []string{"LANG=C", "LC_ALL=C", "PATH=/usr/bin:/bin"}
 	if input != nil {
 		command.Stdin = bytes.NewReader(input)
 	}

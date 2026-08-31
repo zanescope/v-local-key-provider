@@ -1,10 +1,55 @@
 package shadow
 
 import (
+	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	contract "github.com/zanescope/v-local-key-provider/internal/shadowcontract"
 )
+
+func TestMemoryLockerIsRaceSafeAndNeverAdmitsConcurrentOwners(t *testing.T) {
+	locker := &MemoryLocker{}
+	var active atomic.Int32
+	var overlap atomic.Bool
+	var wait sync.WaitGroup
+	const goroutines = 32
+	for index := 0; index < goroutines; index++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			for attempt := 0; attempt < 500; attempt++ {
+				release, err := locker.Acquire(context.Background())
+				if err != nil {
+					continue
+				}
+				if active.Add(1) != 1 {
+					overlap.Store(true)
+				}
+				active.Add(-1)
+				if err := release(); err != nil {
+					t.Errorf("release failed: %v", err)
+					return
+				}
+			}
+		}()
+	}
+	wait.Wait()
+	if overlap.Load() || active.Load() != 0 {
+		t.Fatal("memory Shadow lock admitted concurrent owners")
+	}
+	release, err := locker.Acquire(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := release(); err != nil {
+		t.Fatal(err)
+	}
+	if err := release(); err == nil {
+		t.Fatal("memory Shadow lock accepted a repeated release")
+	}
+}
 
 func TestMemoryJournalDeepCopiesSupervisorAndProcessBindings(t *testing.T) {
 	deadline := contract.NewDeadline(1_000_000_000)
