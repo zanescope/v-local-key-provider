@@ -31,24 +31,29 @@ func runShadowGateCommand(arguments []string, writer io.Writer) (bool, int) {
 	if arguments[1] == "__shadow-transform-qualify" {
 		version = "v-local-shadow-transformation-gate/v1"
 	}
+	fail := func() (bool, int) {
+		if err := json.NewEncoder(writer).Encode(shadowproduction.CoWGateSummary{
+			Version: version, Status: "failed",
+		}); err != nil {
+			return true, 4
+		}
+		return true, 3
+	}
 	prelaunch, _, err := productionPrelaunch()
 	if err != nil {
-		_ = json.NewEncoder(writer).Encode(shadowproduction.CoWGateSummary{
-			Version: version, Status: "failed",
-		})
-		return true, 3
+		return fail()
 	}
 	securityRoot, err := prelaunch.Workspace.PrepareSecurityRoot(prelaunch.Account)
 	if err != nil || securityRoot != prelaunch.Account.SecurityRoot {
-		return true, 3
+		return fail()
 	}
 	journal, err := shadowmodel.NewFileJournal(prelaunch.Account.SecurityRoot)
 	if err != nil {
-		return true, 3
+		return fail()
 	}
 	locker, err := shadowmodel.NewFileLocker(prelaunch.Account.SecurityRoot)
 	if err != nil {
-		return true, 3
+		return fail()
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()

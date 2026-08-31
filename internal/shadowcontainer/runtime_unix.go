@@ -18,7 +18,20 @@ import (
 	contract "github.com/zanescope/v-local-key-provider/internal/shadowcontract"
 )
 
-type Runtime struct{}
+type Runtime struct {
+	// revalidate is an unexported test seam. Production always uses the
+	// platform account database revalidation below; Unix compatibility tests
+	// can exercise exact filesystem ownership without pretending Linux has the
+	// macOS account database contract.
+	revalidate func(shadowaccount.Record) error
+}
+
+func (value Runtime) revalidateAccount(account shadowaccount.Record) error {
+	if value.revalidate != nil {
+		return value.revalidate(account)
+	}
+	return shadowaccount.Revalidate(account)
+}
 
 func exactIdentity(record shadowmodel.RecoveryRecord) bool {
 	return len(record.AttemptID) == 32 && record.BundleID == "com.zanescope.vlocal.shadow."+record.AttemptID &&
@@ -34,15 +47,15 @@ func boundContainer(record shadowmodel.RecoveryRecord) (contract.ResourceBinding
 	return contract.ResourceBinding{}, false
 }
 
-func (Runtime) Create(ctx context.Context, account shadowaccount.Record, record shadowmodel.RecoveryRecord) (contract.ResourceBinding, error) {
-	if ctx == nil || !exactIdentity(record) || shadowaccount.Revalidate(account) != nil {
+func (value Runtime) Create(ctx context.Context, account shadowaccount.Record, record shadowmodel.RecoveryRecord) (contract.ResourceBinding, error) {
+	if ctx == nil || !exactIdentity(record) || value.revalidateAccount(account) != nil {
 		return contract.ResourceBinding{}, errors.New("Shadow container creation binding is invalid")
 	}
 	return shadowcleanup.CreateExactDirectory(ctx, account.ContainersRoot, record.BundleID, "container")
 }
 
-func (Runtime) Remove(ctx context.Context, account shadowaccount.Record, record shadowmodel.RecoveryRecord) error {
-	if ctx == nil || !exactIdentity(record) || shadowaccount.Revalidate(account) != nil {
+func (value Runtime) Remove(ctx context.Context, account shadowaccount.Record, record shadowmodel.RecoveryRecord) error {
+	if ctx == nil || !exactIdentity(record) || value.revalidateAccount(account) != nil {
 		return errors.New("Shadow container cleanup binding is invalid")
 	}
 	binding, found := boundContainer(record)
@@ -61,8 +74,8 @@ func (Runtime) Remove(ctx context.Context, account shadowaccount.Record, record 
 	return shadowcleanup.RemoveExactDirectory(ctx, account.ContainersRoot, binding)
 }
 
-func (Runtime) Absent(account shadowaccount.Record, record shadowmodel.RecoveryRecord) bool {
-	if !exactIdentity(record) || shadowaccount.Revalidate(account) != nil {
+func (value Runtime) Absent(account shadowaccount.Record, record shadowmodel.RecoveryRecord) bool {
+	if !exactIdentity(record) || value.revalidateAccount(account) != nil {
 		return false
 	}
 	_, err := os.Lstat(filepath.Join(account.ContainersRoot, record.BundleID))

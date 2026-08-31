@@ -2,6 +2,7 @@ package provider
 
 import (
 	"bytes"
+	"encoding/hex"
 	"encoding/json"
 	"io/fs"
 	"path/filepath"
@@ -34,9 +35,18 @@ func (value *verticalClock) Advance(delta uint64) {
 
 func TestSyntheticShadowUsesDaemonFramingAndIndependentCoordinator(t *testing.T) {
 	const (
-		buildDigest   = "1111111111111111111111111111111111111111111111111111111111111111"
-		sourceDigest  = "2222222222222222222222222222222222222222222222222222222222222222"
-		optionsDigest = "3333333333333333333333333333333333333333333333333333333333333333"
+		buildDigest  = "1111111111111111111111111111111111111111111111111111111111111111"
+		sourceDigest = "2222222222222222222222222222222222222222222222222222222222222222"
+		catalogKey   = "abababababababababababababababababababababababababababababababab"
+		accountDir   = "synthetic-account"
+		databaseDir  = "synthetic-database"
+	)
+	decodedKey, err := hex.DecodeString(catalogKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	optionsDigest := catalogHMAC(
+		decodedKey, "v-local-shadow-options/v1", accountDir, databaseDir, "media",
 	)
 	credential := shadowfixture.Credential()
 	clock := &verticalClock{now: 1_000_000_000}
@@ -97,7 +107,8 @@ func TestSyntheticShadowUsesDaemonFramingAndIndependentCoordinator(t *testing.T)
 	}
 	request := protocolmodel.AcquireRequest{
 		Protocol: protocolmodel.Name, RequestID: inner.RequestID, Action: "acquire",
-		AccountDir: "synthetic-account", DBDir: "synthetic-database", Scopes: []string{"media"}, DeadlineMS: 120_000,
+		CatalogKey: catalogKey, AccountDir: accountDir, DBDir: databaseDir,
+		Scopes: []string{"media"}, DeadlineMS: 120_000,
 		Workflow: protocolmodel.WorkflowRequest{Operation: "shadow", Shadow: &inner},
 	}
 	payload, err := json.Marshal(request)

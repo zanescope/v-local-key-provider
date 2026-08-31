@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"os"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"testing"
 
@@ -52,10 +53,17 @@ func containerRecord(id string) shadowmodel.RecoveryRecord {
 	return shadowmodel.RecoveryRecord{AttemptID: id, BundleID: "com.zanescope.vlocal.shadow." + id}
 }
 
+func containerRuntime() Runtime {
+	if runtime.GOOS == "darwin" {
+		return Runtime{}
+	}
+	return Runtime{revalidate: func(account shadowaccount.Record) error { return account.Validate() }}
+}
+
 func TestRuntimeCreatesAndRemovesOnlyExactAttemptContainer(t *testing.T) {
 	account := containerAccount(t)
 	record := containerRecord("0123456789abcdef0123456789abcdef")
-	runtime := Runtime{}
+	runtime := containerRuntime()
 	binding, err := runtime.Create(context.Background(), account, record)
 	if err != nil || binding.Kind != "container" || binding.Leaf != record.BundleID {
 		t.Fatalf("create binding=%+v err=%v", binding, err)
@@ -79,7 +87,7 @@ func TestRuntimeCreatesAndRemovesOnlyExactAttemptContainer(t *testing.T) {
 func TestRuntimeReconcilesCreateBeforeJournalBinding(t *testing.T) {
 	account := containerAccount(t)
 	record := containerRecord("abcdefabcdefabcdefabcdefabcdefab")
-	runtime := Runtime{}
+	runtime := containerRuntime()
 	if _, err := runtime.Create(context.Background(), account, record); err != nil {
 		t.Fatal(err)
 	}
@@ -94,7 +102,7 @@ func TestRuntimeReconcilesCreateBeforeJournalBinding(t *testing.T) {
 func TestRuntimeRejectsSameLeafReplacement(t *testing.T) {
 	account := containerAccount(t)
 	record := containerRecord("fedcbafedcbafedcbafedcbafedcbafe")
-	runtime := Runtime{}
+	runtime := containerRuntime()
 	binding, err := runtime.Create(context.Background(), account, record)
 	if err != nil {
 		t.Fatal(err)

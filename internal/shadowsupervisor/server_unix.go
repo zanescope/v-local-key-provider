@@ -100,10 +100,35 @@ func ExecGate(
 	gateFD, statusFD int,
 	supervisorDigest, executable, cloneRoot, executableDigest string,
 	arguments []string,
-) error {
-	if gateFD < 3 || statusFD < 3 || gateFD == statusFD || !validDigest(supervisorDigest) || len(arguments) > 16 {
+) (resultErr error) {
+	if statusFD < 3 {
 		return errors.New("pre-exec gate descriptors or arguments are invalid")
 	}
+	status := os.NewFile(uintptr(statusFD), "shadow-preexec-status")
+	if status == nil {
+		return errors.New("pre-exec gate descriptors are unavailable")
+	}
+	defer status.Close()
+	// EOF on status is the success signal: close-on-exec closes the descriptor
+	// only after the target image has replaced this helper. Every ordinary
+	// return after the status descriptor exists is therefore a start failure
+	// and must write a byte before closing; otherwise the supervisor would
+	// mistake validation drift for a successful exec. Install this signal
+	// before any executable validation because the Provider may release the
+	// gate while the child is still reaching its first validation checkpoint.
+	defer func() {
+		if resultErr != nil {
+			_, _ = status.Write([]byte{1})
+		}
+	}()
+	if gateFD < 3 || gateFD == statusFD || !validDigest(supervisorDigest) || len(arguments) > 16 {
+		return errors.New("pre-exec gate descriptors or arguments are invalid")
+	}
+	gate := os.NewFile(uintptr(gateFD), "shadow-preexec-gate")
+	if gate == nil {
+		return errors.New("pre-exec gate descriptors are unavailable")
+	}
+	defer gate.Close()
 	self, err := os.Executable()
 	if err != nil {
 		return errors.New("pre-exec supervisor executable is unavailable")
@@ -128,13 +153,6 @@ func ExecGate(
 	if err != nil {
 		return err
 	}
-	gate := os.NewFile(uintptr(gateFD), "shadow-preexec-gate")
-	status := os.NewFile(uintptr(statusFD), "shadow-preexec-status")
-	if gate == nil || status == nil {
-		return errors.New("pre-exec gate descriptors are unavailable")
-	}
-	defer gate.Close()
-	defer status.Close()
 	buffer := make([]byte, 1)
 	if _, err := io.ReadFull(gate, buffer); err != nil || buffer[0] != 1 {
 		return errors.New("pre-exec gate closed before release")
@@ -151,7 +169,6 @@ func ExecGate(
 	unix.CloseOnExec(statusFD)
 	argv := append([]string{executable}, arguments...)
 	if err := syscall.Exec(executable, argv, environment); err != nil {
-		_, _ = status.Write([]byte{1})
 		return errors.New("pre-exec target could not start")
 	}
 	return nil
@@ -179,9 +196,11 @@ func waitForExec(status *os.File, timeout time.Duration) error {
 	}
 }
 
-func Serve(control *os.File, clock clockmodel.Clock) error {
-	if control == nil || clock == nil {
-		return errors.New("supervisor control or clock is missing")
+type processStartObserver func(int) (uint64, error)
+
+func serve(control *os.File, clock clockmodel.Clock, processStart processStartObserver) error {
+	if control == nil || clock == nil || processStart == nil {
+		return errors.New("supervisor control, clock, or process observer is missing")
 	}
 	unix.CloseOnExec(int(control.Fd()))
 	defer control.Close()
@@ -208,7 +227,7 @@ func Serve(control *os.File, clock clockmodel.Clock) error {
 		sendFailure(control, "lease_expired")
 		return errors.New("supervisor lease expired before launch")
 	}
-	supervisorStartNS, err := shadowprocess.StartMonotonicNS(os.Getpid())
+	supervisorStartNS, err := processStart(os.Getpid())
 	if err != nil || supervisorStartNS == 0 {
 		sendFailure(control, "supervisor_binding_failed")
 		return errors.New("supervisor process start identity is unavailable")
@@ -329,7 +348,7 @@ func Serve(control *os.File, clock clockmodel.Clock) error {
 	}
 	finished := make(chan error, 1)
 	go func() { finished <- command.Wait() }()
-	startNS, err := shadowprocess.StartMonotonicNS(command.Process.Pid)
+	startNS, err := processStart(command.Process.Pid)
 	if err != nil {
 		_ = terminateOwned(command, finished)
 		return errors.New("owned process start identity is unavailable")
@@ -403,6 +422,10 @@ func Serve(control *os.File, clock clockmodel.Clock) error {
 			}
 		}
 	}
+}
+
+func Serve(control *os.File, clock clockmodel.Clock) error {
+	return serve(control, clock, shadowprocess.StartMonotonicNS)
 }
 
 func ServeFD(fd int) error {

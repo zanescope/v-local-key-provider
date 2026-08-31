@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"syscall"
 	"testing"
@@ -18,10 +19,61 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+type unixTestSystemClock struct{}
+
+func (unixTestSystemClock) NowNS() (uint64, error) {
+	var value unix.Timespec
+	if err := unix.ClockGettime(unix.CLOCK_MONOTONIC_RAW, &value); err != nil ||
+		value.Sec < 0 || value.Nsec < 0 || value.Nsec >= 1_000_000_000 ||
+		uint64(value.Sec) > (^uint64(0)-uint64(value.Nsec))/1_000_000_000 {
+		return 0, errors.New("Unix test monotonic clock is unavailable")
+	}
+	return uint64(value.Sec)*1_000_000_000 + uint64(value.Nsec), nil
+}
+
+func testSupervisorClock() clockmodel.Clock {
+	if runtime.GOOS == "darwin" {
+		return clockmodel.System{}
+	}
+	return unixTestSystemClock{}
+}
+
+func testProcessStart(pid int) (uint64, error) {
+	if pid <= 0 {
+		return 0, errors.New("Unix test process identity is unavailable")
+	}
+	// Darwin production still uses proc_pid_rusage through Serve. Linux tests
+	// inject a stable, nonzero identity so they can exercise the surrounding
+	// descriptor, lease, gate, process-group, and cleanup protocol without
+	// pretending to qualify Darwin PID-birth semantics.
+	return uint64(pid), nil
+}
+
+func serveForTest(control *os.File, clock clockmodel.Clock) error {
+	if runtime.GOOS == "darwin" {
+		return Serve(control, clock)
+	}
+	return serve(control, clock, testProcessStart)
+}
+
+func serveTestFD(fd int) error {
+	if runtime.GOOS == "darwin" {
+		return ServeFD(fd)
+	}
+	if fd < 3 {
+		return errors.New("supervisor requires an inherited control descriptor")
+	}
+	control := os.NewFile(uintptr(fd), "shadow-supervisor-test-control-"+strconv.Itoa(fd))
+	if control == nil {
+		return errors.New("supervisor control descriptor is invalid")
+	}
+	return serveForTest(control, testSupervisorClock())
+}
+
 func TestMain(main *testing.M) {
 	if len(os.Args) == 3 && os.Args[1] == "serve-fd" {
 		fd, err := strconv.Atoi(os.Args[2])
-		if err != nil || ServeFD(fd) != nil {
+		if err != nil || serveTestFD(fd) != nil {
 			os.Exit(92)
 		}
 		os.Exit(0)
@@ -63,6 +115,10 @@ func TestExecGateRejectsChangedSupervisorBuildBeforeTargetValidation(t *testing.
 	)
 	if err == nil || err.Error() != "pre-exec supervisor build binding changed" {
 		t.Fatalf("unexpected changed-build result: %v", err)
+	}
+	buffer := make([]byte, 1)
+	if read, readErr := statusRead.Read(buffer); readErr != nil || read != 1 || buffer[0] != 1 {
+		t.Fatalf("pre-exec failure did not publish its status byte: read=%d payload=%v err=%v", read, buffer, readErr)
 	}
 }
 
@@ -270,9 +326,9 @@ func TestInheritedDescriptorSupervisorBindsBeforeReleaseAndCleansOnEOF(t *testin
 	root := canonicalSupervisorRoot(t)
 	executable := copySupervisorHelper(t, root)
 	server, client := socketPair(t)
-	clock := clockmodel.System{}
+	clock := testSupervisorClock()
 	finished := make(chan error, 1)
-	go func() { finished <- Serve(server, clock) }()
+	go func() { finished <- serveForTest(server, clock) }()
 	if err := writeFrame(client, supervisorInit(t, clock, root, executable, 5*time.Second)); err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +408,7 @@ func TestSupervisorClientBindsReleasesAndCleansOnProviderEOF(t *testing.T) {
 	defer cancel()
 	client, supervisor, err := Start(ctx, StartConfig{
 		SupervisorPath: executable, SupervisorDigest: digest,
-		Init: supervisorInit(t, clockmodel.System{}, root, executable, 5*time.Second), ResponseTimeout: 2 * time.Second,
+		Init: supervisorInit(t, testSupervisorClock(), root, executable, 5*time.Second), ResponseTimeout: 2 * time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -420,7 +476,7 @@ func TestSupervisorClientStopCleansBeforeRelease(t *testing.T) {
 	defer cancel()
 	client, supervisor, err := Start(ctx, StartConfig{
 		SupervisorPath: executable, SupervisorDigest: digest,
-		Init: supervisorInit(t, clockmodel.System{}, root, executable, 5*time.Second), ResponseTimeout: 2 * time.Second,
+		Init: supervisorInit(t, testSupervisorClock(), root, executable, 5*time.Second), ResponseTimeout: 2 * time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -450,9 +506,9 @@ func TestSupervisorLeaseStopsUnreleasedSyntheticProcess(t *testing.T) {
 	executable := copySupervisorHelper(t, root)
 	server, client := socketPair(t)
 	defer client.Close()
-	clock := clockmodel.System{}
+	clock := testSupervisorClock()
 	finished := make(chan error, 1)
-	go func() { finished <- Serve(server, clock) }()
+	go func() { finished <- serveForTest(server, clock) }()
 	if err := writeFrame(client, supervisorInit(t, clock, root, executable, 1500*time.Millisecond)); err != nil {
 		t.Fatal(err)
 	}
@@ -485,9 +541,9 @@ func TestPreexecSupervisorDoesNotRunTargetBeforeBoundRelease(t *testing.T) {
 	root := canonicalSupervisorRoot(t)
 	executable := copySupervisorHelper(t, root)
 	server, client := socketPair(t)
-	clock := clockmodel.System{}
+	clock := testSupervisorClock()
 	finished := make(chan error, 1)
-	go func() { finished <- Serve(server, clock) }()
+	go func() { finished <- serveForTest(server, clock) }()
 	init := supervisorInit(t, clock, root, executable, 5*time.Second)
 	init.Mode = "preexec"
 	init.Arguments = []string{"-test.run=^TestSupervisorPreexecTarget$"}
@@ -538,9 +594,9 @@ func TestPreexecSupervisorRejectsTargetDriftWhileHeld(t *testing.T) {
 	root := canonicalSupervisorRoot(t)
 	executable := copySupervisorHelper(t, root)
 	server, client := socketPair(t)
-	clock := clockmodel.System{}
+	clock := testSupervisorClock()
 	finished := make(chan error, 1)
-	go func() { finished <- Serve(server, clock) }()
+	go func() { finished <- serveForTest(server, clock) }()
 	init := supervisorInit(t, clock, root, executable, 5*time.Second)
 	init.Mode = "preexec"
 	init.Arguments = []string{"-test.run=^TestSupervisorPreexecTarget$"}
@@ -583,10 +639,13 @@ func TestSupervisorLeaseExpiresBeforePrepareWithoutStartingProcess(t *testing.T)
 	executable := copySupervisorHelper(t, root)
 	server, client := socketPair(t)
 	defer client.Close()
-	clock := clockmodel.System{}
+	clock := testSupervisorClock()
 	finished := make(chan error, 1)
-	go func() { finished <- Serve(server, clock) }()
-	if err := writeFrame(client, supervisorInit(t, clock, root, executable, 300*time.Millisecond)); err != nil {
+	go func() { finished <- serveForTest(server, clock) }()
+	// Race instrumentation can spend several hundred milliseconds in the
+	// initial executable/self-identity checks. Keep enough lease budget to
+	// observe supervisor_bound first while still exercising real timer expiry.
+	if err := writeFrame(client, supervisorInit(t, clock, root, executable, 2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	reader := bufio.NewReaderSize(client, maxFrameBytes+1)
@@ -618,7 +677,7 @@ func TestSupervisorClientProviderEOFBeforePrepareStartsNoChild(t *testing.T) {
 	defer cancel()
 	client, supervisor, err := Start(ctx, StartConfig{
 		SupervisorPath: executable, SupervisorDigest: digest,
-		Init: supervisorInit(t, clockmodel.System{}, root, executable, 5*time.Second), ResponseTimeout: 2 * time.Second,
+		Init: supervisorInit(t, testSupervisorClock(), root, executable, 5*time.Second), ResponseTimeout: 2 * time.Second,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -640,11 +699,11 @@ func TestSupervisorRechecksAbsoluteLeaseBeforeWaitingForPrepare(t *testing.T) {
 	executable := copySupervisorHelper(t, root)
 	server, client := socketPair(t)
 	defer client.Close()
-	init := supervisorInit(t, clockmodel.System{}, root, executable, time.Second)
+	init := supervisorInit(t, testSupervisorClock(), root, executable, time.Second)
 	init.LeaseDeadlineNS = 200
 	clock := &sequenceClock{values: []uint64{100, 250}}
 	finished := make(chan error, 1)
-	go func() { finished <- Serve(server, clock) }()
+	go func() { finished <- serveForTest(server, clock) }()
 	if err := writeFrame(client, init); err != nil {
 		t.Fatal(err)
 	}
@@ -732,8 +791,8 @@ func TestSupervisorRejectsProductionModeBeforeStartingAProcess(t *testing.T) {
 	server, client := socketPair(t)
 	defer client.Close()
 	finished := make(chan error, 1)
-	go func() { finished <- Serve(server, clockmodel.System{}) }()
-	init := supervisorInit(t, clockmodel.System{}, root, executable, time.Second)
+	go func() { finished <- serveForTest(server, testSupervisorClock()) }()
+	init := supervisorInit(t, testSupervisorClock(), root, executable, time.Second)
 	init.Mode = "production"
 	if err := writeFrame(client, init); err != nil {
 		t.Fatal(err)

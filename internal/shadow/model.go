@@ -183,6 +183,12 @@ func (value RecoveryRecord) Validate() error {
 			return errors.New("prepared recovery lifecycle is invalid")
 		}
 		switch value.PendingAction {
+		case ActionNone:
+			if !only("workspace", "clone_app") &&
+				!only("workspace", "clone_app", "supervisor", "hook", "socket") &&
+				!only("workspace", "clone_app", "supervisor", "hook", "socket", "container") {
+				return errors.New("completed prepared checkpoint has unexpected resources")
+			}
 		case ActionTransform:
 			if !only("workspace", "clone_app") {
 				return errors.New("transform checkpoint has unexpected resources")
@@ -208,6 +214,16 @@ func (value RecoveryRecord) Validate() error {
 	case StateCleanupPending:
 		if value.PendingAction != ActionNone {
 			return errors.New("cleanup recovery lifecycle retained a pending action")
+		}
+		if !only() && !only("workspace", "clone_app") &&
+			!only("workspace", "clone_app", "supervisor") &&
+			!only("workspace", "clone_app", "supervisor", "hook", "socket") &&
+			!only("workspace", "clone_app", "supervisor", "hook", "socket", "container") {
+			return errors.New("cleanup recovery lifecycle has an unreachable resource set")
+		}
+		if (value.Supervisor != nil || value.Process != nil) &&
+			!only("workspace", "clone_app", "supervisor", "hook", "socket", "container") {
+			return errors.New("cleanup recovery process binding lacks its launch resources")
 		}
 	}
 	if value.PendingAction == ActionReleaseLaunch && (value.Supervisor == nil || value.Process == nil) {

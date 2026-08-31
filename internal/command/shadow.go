@@ -3,6 +3,7 @@ package command
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -33,6 +34,8 @@ type shadowCredentialPayload struct {
 	ImageKeys          *protocolmodel.ImageKeys            `json:"image_keys,omitempty"`
 	Profiles           []cryptomodel.Summary               `json:"profiles,omitempty"`
 }
+
+const shadowOptionsDomain = "v-local-shadow-options/v1"
 
 func decodeShadowCredential(payload []byte) (shadowCredentialPayload, error) {
 	if len(payload) == 0 || len(payload) > protocolmodel.MaxResponseBytes {
@@ -76,6 +79,70 @@ func shadowScopeSelection(scopes []string) (database, media bool, err error) {
 		media = media || scope == "media"
 	}
 	return database, media, nil
+}
+
+func validateShadowOptionsBinding(request protocolmodel.AcquireRequest, inner contract.Request) error {
+	if request.AccountDir == "" || request.DBDir == "" ||
+		strings.ContainsRune(request.AccountDir, '\x00') || strings.ContainsRune(request.DBDir, '\x00') ||
+		!validShadowDigest(request.CatalogKey) {
+		return errors.New("Shadow outer options binding is invalid")
+	}
+	key, err := hex.DecodeString(request.CatalogKey)
+	if err != nil || len(key) != 32 {
+		clearBytes(key)
+		return errors.New("Shadow outer options binding is invalid")
+	}
+	defer clearBytes(key)
+	expected := catalogmodel.HMAC(
+		key, shadowOptionsDomain, request.AccountDir, request.DBDir, strings.Join(request.Scopes, "\x00"),
+	)
+	if !hmac.Equal([]byte(inner.OptionsDigest), []byte(expected)) {
+		return errors.New("Shadow inner request drifted from its outer options")
+	}
+	return nil
+}
+
+func validateShadowResultBinding(request contract.Request, result contract.Result) error {
+	if result.RequestID != request.RequestID {
+		return errors.New("Shadow runner result request binding is invalid")
+	}
+	type binding struct {
+		buildSetDigest            string
+		sourceQualificationDigest string
+		cleanupRoute              string
+		accountBindingID          string
+		optionsDigest             string
+	}
+	expected := binding{
+		buildSetDigest: request.BuildSetDigest, sourceQualificationDigest: request.SourceQualificationDigest,
+		cleanupRoute: request.CleanupRoute, accountBindingID: request.AccountBindingID, optionsDigest: request.OptionsDigest,
+	}
+	if result.Qualification != nil {
+		actual := binding{
+			buildSetDigest:            result.Qualification.BuildSetDigest,
+			sourceQualificationDigest: result.Qualification.SourceQualificationDigest,
+			cleanupRoute:              result.Qualification.CleanupRoute,
+			accountBindingID:          result.Qualification.AccountBindingID,
+			optionsDigest:             result.Qualification.OptionsDigest,
+		}
+		if actual != expected {
+			return errors.New("Shadow runner qualification binding is invalid")
+		}
+	}
+	if result.Receipt != nil {
+		actual := binding{
+			buildSetDigest:            result.Receipt.BuildSetDigest,
+			sourceQualificationDigest: result.Receipt.SourceQualificationDigest,
+			cleanupRoute:              result.Receipt.CleanupRoute,
+			accountBindingID:          result.Receipt.AccountBindingID,
+			optionsDigest:             result.Receipt.OptionsDigest,
+		}
+		if actual != expected || result.Receipt.Operation != request.Operation ||
+			result.Receipt.ChallengeID != request.ChallengeID {
+			return errors.New("Shadow runner receipt binding is invalid")
+		}
+	}
+	return nil
 }
 
 func validateShadowCredentialForScopes(request protocolmodel.AcquireRequest, value shadowCredentialPayload) error {
@@ -196,13 +263,23 @@ func disabledShadowResult(request contract.Request) contract.Result {
 }
 
 func ExecuteShadow(ctx context.Context, request protocolmodel.AcquireRequest, runner ShadowRunner) (protocolmodel.Response, error) {
-	if request.Workflow.Operation != "shadow" || request.Workflow.Shadow == nil {
+	if ctx == nil || ctx.Err() != nil || request.Protocol != protocolmodel.Name || request.Action != "acquire" ||
+		request.RequestID == "" || request.DeadlineMS <= 0 || request.DeadlineMS > 120_000 ||
+		request.Workflow.Operation != "shadow" || request.Workflow.SessionID != "" ||
+		request.Workflow.ExpectedCatalogID != "" || request.Workflow.ActionReceipt != nil ||
+		request.Workflow.Shadow == nil {
 		return protocolmodel.Response{}, errors.New("Shadow command lacks its independent request")
 	}
 	if _, _, err := shadowScopeSelection(request.Scopes); err != nil {
 		return protocolmodel.Response{}, err
 	}
 	inner := *request.Workflow.Shadow
+	if inner.Validate() != nil || inner.RequestID != request.RequestID {
+		return protocolmodel.Response{}, errors.New("Shadow command request binding is invalid")
+	}
+	if err := validateShadowOptionsBinding(request, inner); err != nil {
+		return protocolmodel.Response{}, err
+	}
 	var output shadowmodel.Output
 	var err error
 	if runner == nil {
@@ -218,6 +295,9 @@ func ExecuteShadow(ctx context.Context, request protocolmodel.AcquireRequest, ru
 	}
 	if err := output.Result.Validate(); err != nil {
 		return protocolmodel.Response{}, errors.New("Shadow runner returned an invalid result")
+	}
+	if err := validateShadowResultBinding(inner, output.Result); err != nil {
+		return protocolmodel.Response{}, err
 	}
 	response := protocolmodel.Response{
 		Protocol: request.Protocol, RequestID: request.RequestID,

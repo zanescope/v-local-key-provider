@@ -3,15 +3,32 @@ package command
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	catalogmodel "github.com/zanescope/v-local-key-provider/internal/catalog"
 	protocolmodel "github.com/zanescope/v-local-key-provider/internal/protocol"
 	shadowmodel "github.com/zanescope/v-local-key-provider/internal/shadow"
 	contract "github.com/zanescope/v-local-key-provider/internal/shadowcontract"
 )
+
+const (
+	commandShadowAccount = "/fixture/account"
+	commandShadowDB      = "/fixture/account/db"
+	commandShadowKey     = "abababababababababababababababababababababababababababababababab"
+)
+
+func commandShadowOptions(t *testing.T) string {
+	t.Helper()
+	key, err := hex.DecodeString(commandShadowKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return catalogmodel.HMAC(key, shadowOptionsDomain, commandShadowAccount, commandShadowDB, "database")
+}
 
 type shadowRunnerStub struct {
 	qualified shadowmodel.Output
@@ -33,8 +50,18 @@ func commandShadowVectors(t *testing.T) contract.GoldenVectors {
 		t.Fatal(err)
 	}
 	var vectors contract.GoldenVectors
-	if err := contract.DecodeStrict(payload, &vectors); err != nil || vectors.Validate() != nil {
+	if err := contract.DecodeStrict(payload, &vectors); err != nil {
 		t.Fatalf("invalid Shadow vectors: %v", err)
+	}
+	options := commandShadowOptions(t)
+	vectors.Challenge.OptionsDigest = options
+	vectors.QualifyRequest.OptionsDigest = options
+	vectors.ExecuteRequest.OptionsDigest = options
+	vectors.Qualification.OptionsDigest = options
+	vectors.CleanupReceipt.OptionsDigest = options
+	vectors.ReadyResult.Receipt.OptionsDigest = options
+	if err := vectors.Validate(); err != nil {
+		t.Fatalf("invalid rebound Shadow vectors: %v", err)
 	}
 	return vectors
 }
@@ -42,6 +69,7 @@ func commandShadowVectors(t *testing.T) contract.GoldenVectors {
 func commandShadowRequest(inner contract.Request) protocolmodel.AcquireRequest {
 	return protocolmodel.AcquireRequest{
 		Protocol: protocolmodel.Name, RequestID: inner.RequestID, Action: "acquire",
+		CatalogKey: commandShadowKey, AccountDir: commandShadowAccount, DBDir: commandShadowDB,
 		Scopes: []string{"database"}, DeadlineMS: 120_000,
 		Workflow: protocolmodel.WorkflowRequest{Operation: "shadow", Shadow: &inner},
 	}
@@ -139,6 +167,65 @@ func TestExecuteShadowRejectsNonCanonicalScopesBeforeRunner(t *testing.T) {
 			request.Scopes = scopes
 			if _, err := ExecuteShadow(context.Background(), request, shadowRunnerStub{}); err == nil {
 				t.Fatal("non-canonical Shadow scopes reached the runner")
+			}
+		})
+	}
+}
+
+func TestExecuteShadowRejectsOuterOptionsBindingDrift(t *testing.T) {
+	vectors := commandShadowVectors(t)
+	request := commandShadowRequest(vectors.ExecuteRequest)
+	request.DBDir = "/fixture/other-account/db"
+	if _, err := ExecuteShadow(context.Background(), request, shadowRunnerStub{}); err == nil {
+		t.Fatal("outer Shadow options drift reached the runner")
+	}
+}
+
+func TestExecuteShadowRevalidatesOuterAndInnerRequestBoundary(t *testing.T) {
+	vectors := commandShadowVectors(t)
+	tests := map[string]func(*protocolmodel.AcquireRequest){
+		"outer request": func(request *protocolmodel.AcquireRequest) {
+			request.RequestID = "0123456789abcdef0123456789abcdef"
+		},
+		"outer workflow residue": func(request *protocolmodel.AcquireRequest) {
+			request.Workflow.SessionID = "forbidden-session"
+		},
+		"inner operation": func(request *protocolmodel.AcquireRequest) {
+			request.Workflow.Shadow.Operation = "unknown"
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			request := commandShadowRequest(vectors.ExecuteRequest)
+			inner := *request.Workflow.Shadow
+			request.Workflow.Shadow = &inner
+			mutate(&request)
+			if _, err := ExecuteShadow(context.Background(), request, shadowRunnerStub{}); err == nil {
+				t.Fatal("invalid direct Shadow command boundary reached the runner")
+			}
+		})
+	}
+}
+
+func TestExecuteShadowRejectsRunnerCrossRequestBindingDrift(t *testing.T) {
+	vectors := commandShadowVectors(t)
+	tests := map[string]func(*contract.Result){
+		"request": func(result *contract.Result) {
+			result.RequestID = "0123456789abcdef0123456789abcdef"
+		},
+		"receipt": func(result *contract.Result) {
+			receipt := *result.Receipt
+			receipt.OptionsDigest = strings.Repeat("9", 64)
+			result.Receipt = &receipt
+		},
+	}
+	for name, mutate := range tests {
+		t.Run(name, func(t *testing.T) {
+			result := vectors.ReadyResult
+			mutate(&result)
+			runner := shadowRunnerStub{executed: shadowmodel.Output{Result: result, Credential: validShadowCredentialJSON(t)}}
+			if _, err := ExecuteShadow(context.Background(), commandShadowRequest(vectors.ExecuteRequest), runner); err == nil {
+				t.Fatal("cross-request Shadow runner result was accepted")
 			}
 		})
 	}

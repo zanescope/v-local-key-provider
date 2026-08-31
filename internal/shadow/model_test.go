@@ -129,6 +129,88 @@ func TestBindResourceRejectsClassRebindingWithoutMutation(t *testing.T) {
 	}
 }
 
+func resourcesForKinds(record RecoveryRecord, kinds ...string) []contract.ResourceBinding {
+	wanted := map[string]bool{}
+	for _, kind := range kinds {
+		wanted[kind] = true
+	}
+	result := make([]contract.ResourceBinding, 0, len(kinds))
+	for _, resource := range record.Resources {
+		if wanted[resource.Kind] {
+			result = append(result, resource)
+		}
+	}
+	return result
+}
+
+func TestPreparedCompletedCheckpointAcceptsOnlyReachableResourceSets(t *testing.T) {
+	base := modelRecordFixture()
+	base.PendingAction = ActionNone
+	valid := [][]string{
+		{"workspace", "clone_app"},
+		{"workspace", "clone_app", "supervisor", "hook", "socket"},
+		{"workspace", "clone_app", "supervisor", "hook", "socket", "container"},
+	}
+	for _, kinds := range valid {
+		record := cloneRecoveryRecord(base)
+		record.Resources = resourcesForKinds(base, kinds...)
+		if err := record.Validate(); err != nil {
+			t.Fatalf("reachable completed checkpoint %v was rejected: %v", kinds, err)
+		}
+	}
+	invalid := [][]string{
+		{"workspace", "clone_app", "supervisor"},
+		{"workspace", "clone_app", "container"},
+		{"workspace", "clone_app", "hook", "socket"},
+		{"workspace", "clone_app", "supervisor", "container"},
+		{"workspace", "clone_app", "container", "hook", "socket"},
+	}
+	for _, kinds := range invalid {
+		record := cloneRecoveryRecord(base)
+		record.Resources = resourcesForKinds(base, kinds...)
+		if err := record.Validate(); err == nil {
+			t.Fatalf("unreachable completed checkpoint %v was accepted", kinds)
+		}
+	}
+}
+
+func TestCleanupCheckpointAcceptsOnlyReachableResourceSets(t *testing.T) {
+	base := modelRecordFixture()
+	base.State = StateCleanupPending
+	base.PendingAction = ActionNone
+	base.Supervisor = nil
+	base.Process = nil
+	base.SupervisorLeaseNS = 0
+	valid := [][]string{
+		{},
+		{"workspace", "clone_app"},
+		{"workspace", "clone_app", "supervisor"},
+		{"workspace", "clone_app", "supervisor", "hook", "socket"},
+		{"workspace", "clone_app", "supervisor", "hook", "socket", "container"},
+	}
+	for _, kinds := range valid {
+		record := cloneRecoveryRecord(base)
+		record.Resources = resourcesForKinds(base, kinds...)
+		if err := record.Validate(); err != nil {
+			t.Fatalf("reachable cleanup checkpoint %v was rejected: %v", kinds, err)
+		}
+	}
+	invalid := [][]string{
+		{"workspace"},
+		{"workspace", "clone_app", "container"},
+		{"workspace", "clone_app", "hook", "socket"},
+		{"workspace", "clone_app", "supervisor", "container"},
+		{"workspace", "clone_app", "container", "hook", "socket"},
+	}
+	for _, kinds := range invalid {
+		record := cloneRecoveryRecord(base)
+		record.Resources = resourcesForKinds(base, kinds...)
+		if err := record.Validate(); err == nil {
+			t.Fatalf("unreachable cleanup checkpoint %v was accepted", kinds)
+		}
+	}
+}
+
 func TestSaveCompletedRejectsPartialResourceSetWithoutMutation(t *testing.T) {
 	record := modelRecordFixture()
 	record.State = StatePlanned

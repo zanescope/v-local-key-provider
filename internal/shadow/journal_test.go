@@ -66,7 +66,7 @@ func TestMemoryJournalDeepCopiesSupervisorAndProcessBindings(t *testing.T) {
 		},
 		PendingAction: ActionNone, Resources: []contract.ResourceBinding{
 			{Kind: "workspace", Leaf: "attempt-0123456789abcdef0123456789abcdef", Device: 1, Inode: 10, UID: 501, Mode: 0o700, LinkCount: 1},
-			{Kind: "clone_app", Leaf: "attempt-0123456789abcdef0123456789abcdef/WeChat.app", Device: 1, Inode: 11, UID: 501, Mode: 0o700, LinkCount: 1},
+			{Kind: "clone_app", Leaf: "attempt-0123456789abcdef0123456789abcdef/WeChat.app", Device: 1, Inode: 11, UID: 501, Mode: 0o700, LinkCount: 1, DigestSHA256: "5555555555555555555555555555555555555555555555555555555555555555"},
 			{Kind: "container", Leaf: "com.zanescope.vlocal.shadow.0123456789abcdef0123456789abcdef", Device: 1, Inode: 12, UID: 501, Mode: 0o700, LinkCount: 1},
 			{Kind: "hook", Leaf: "attempt-0123456789abcdef0123456789abcdef/capture.dylib", Device: 1, Inode: 13, UID: 501, Mode: 0o600, LinkCount: 1},
 			{Kind: "socket", Leaf: "attempt-0123456789abcdef0123456789abcdef/capture.sock", Device: 1, Inode: 14, UID: 501, Mode: 0o600, LinkCount: 1},

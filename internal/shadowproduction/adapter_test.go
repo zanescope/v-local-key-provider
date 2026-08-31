@@ -184,7 +184,7 @@ func adapterRecordFixture(t *testing.T) (*Prelaunch, shadowmodel.RecoveryRecord)
 		PendingAction: shadowmodel.ActionPrepareLaunch,
 		Resources: []contract.ResourceBinding{
 			{Kind: "workspace", Leaf: root, Device: 31, Inode: 32, UID: prelaunch.Account.UID, Mode: 0o700, LinkCount: 1},
-			{Kind: "clone_app", Leaf: root + "/WeChat.app", Device: 33, Inode: 34, UID: prelaunch.Account.UID, Mode: 0o700, LinkCount: 1},
+			{Kind: "clone_app", Leaf: root + "/WeChat.app", Device: 33, Inode: 34, UID: prelaunch.Account.UID, Mode: 0o700, LinkCount: 1, DigestSHA256: strings.Repeat("c", 64)},
 			{Kind: "container", Leaf: "com.zanescope.vlocal.shadow." + attemptID, Device: 35, Inode: 36, UID: prelaunch.Account.UID, Mode: 0o700, LinkCount: 1},
 			{Kind: "hook", Leaf: root + "/capture-hook.dylib", Device: 37, Inode: 38, UID: prelaunch.Account.UID, Mode: 0o600, LinkCount: 1},
 			{Kind: "socket", Leaf: root + "/capture.sock", Device: 39, Inode: 40, UID: prelaunch.Account.UID, Mode: 0o600, LinkCount: 1},
